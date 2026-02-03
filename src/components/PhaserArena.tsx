@@ -3,7 +3,6 @@ import {
   MOVE_SPEED,
   WORLD_WIDTH,
   WORLD_HEIGHT,
-  REMOTE_INTERPOLATION_DELAY,
   FURY_SIZE_MULT,
   SPAWN_IMMUNITY_UNTIL_FIRST_ACTION,
 } from "./PhaserArena/constants";
@@ -50,6 +49,15 @@ import {
   type PresencePayloadContext,
   type WorldPayloadContext,
 } from "./PhaserArena/socketHandlers";
+import {
+  queueRemoteSnapshot as queueRemoteSnapshotFromModule,
+  upsertRemotePlayer as upsertRemotePlayerFromModule,
+  updateRemoteHealthBar as updateRemoteHealthBarFromModule,
+  interpolateRemotePlayers as interpolateRemotePlayersFromModule,
+  type QueueRemoteSnapshotContext,
+  type UpsertRemotePlayerContext,
+  type InterpolateRemotePlayersContext,
+} from "./PhaserArena/remotePlayers";
 
 const createSpaceArenaScene = (
   Phaser: PhaserModule,
@@ -990,34 +998,13 @@ const createSpaceArenaScene = (
       firingAt: number | null;
       updatedAt: number;
     }) {
-      const buffer = this.remoteSnapshots.get(entry.userId) ?? [];
-      buffer.push({
-        x: entry.x,
-        y: entry.y,
-        rotation: entry.rotation,
-        health: entry.health,
-        maxHealth: entry.maxHealth,
-        invulnerableUntil: Number(entry.invulnerableUntil ?? 0),
-        firingAt: entry.firingAt,
-        updatedAt: entry.updatedAt,
-        nickname: entry.nickname,
-        shipChoice: entry.shipChoice,
-        level: entry.level ?? 1,
-      });
-      buffer.sort((a, b) => a.updatedAt - b.updatedAt);
-      while (buffer.length > 20) {
-        buffer.shift();
-      }
-      this.remoteSnapshots.set(entry.userId, buffer);
-      const remote = this.otherPlayers.get(entry.userId);
-      if (remote && entry.firingAt && entry.firingAt > remote.lastFiringAt) {
-        remote.lastFiringAt = entry.firingAt;
-        // Skip if we recently showed a corrective laser for this shot (victim sees server-authoritative laser)
-        const lastCorrective = this.lastCorrectiveShotByAttacker.get(entry.userId);
-        if (!lastCorrective || Date.now() - lastCorrective > 400) {
-          this.spawnRemoteLaser(remote.sprite, entry.userId);
-        }
-      }
+      const ctx: QueueRemoteSnapshotContext = {
+        remoteSnapshots: this.remoteSnapshots,
+        otherPlayers: this.otherPlayers,
+        lastCorrectiveShotByAttacker: this.lastCorrectiveShotByAttacker,
+        spawnRemoteLaser: (sprite, userId) => this.spawnRemoteLaser(sprite, userId),
+      };
+      queueRemoteSnapshotFromModule(ctx, entry);
     }
 
     private upsertRemotePlayer(entry: {
@@ -1035,57 +1022,16 @@ const createSpaceArenaScene = (
       huntedExpiresAt?: number;
       isHunted?: boolean;
     }) {
-      const isHunted =
-        entry.isHunted === true ||
-        (typeof entry.huntedExpiresAt === "number" && entry.huntedExpiresAt > Date.now());
-      const nameColor = isHunted ? "#e74c3c" : "#b9c4d6";
-      const existing = this.otherPlayers.get(entry.userId);
-      if (!existing) {
-        const sprite = this.physics.add
-          .sprite(entry.x, entry.y, getShipTexture(entry.shipChoice))
-          .setScale(getShipScale(entry.shipChoice))
-          .setCollideWorldBounds(true);
-        sprite.setDamping(true);
-        sprite.setDrag(0.9);
-        sprite.setMaxVelocity(MOVE_SPEED * getShipSpeedMultiplier(entry.shipChoice));
-        sprite.setDepth(entry.y);
-        sprite.setRotation(entry.rotation + getSkinRotationOffset(entry.shipChoice));
-        sprite.setData("userId", entry.userId);
-        this.otherPlayersGroup?.add(sprite);
-        sprite.setAlpha(
-          Number(entry.invulnerableUntil ?? 0) > Date.now() ? 0.55 : 1
-        );
-        sprite.play(getShipIdleAnim(entry.shipChoice));
-        sprite.setData("aimRotation", entry.rotation);
-        const nameText = this.add
-          .text(entry.x, entry.y - 68, this.formatPilotName(entry.nickname, entry.level), {
-            fontFamily: "Arial",
-            fontSize: "12px",
-            color: nameColor,
-          })
-          .setOrigin(0.5, 1);
-        const healthBar = this.add.graphics();
-        this.otherPlayers.set(entry.userId, {
-          sprite,
-          nameText,
-          healthBar,
-          lastFiringAt: 0,
-          huntedExpiresAt: entry.huntedExpiresAt,
-        });
-        sprite.setData("shipChoice", entry.shipChoice ?? null);
-        this.updateRemoteHealthBar(healthBar, sprite, entry.health, entry.maxHealth);
-      } else {
-        existing.nameText.setText(this.formatPilotName(entry.nickname, entry.level));
-        existing.nameText.setColor(nameColor);
-        existing.huntedExpiresAt = entry.huntedExpiresAt;
-        const expectedTexture = getShipTexture(entry.shipChoice);
-        if (existing.sprite.texture.key !== expectedTexture) {
-          existing.sprite.setTexture(expectedTexture);
-          existing.sprite.play(getShipIdleAnim(entry.shipChoice));
-        }
-        existing.sprite.setData("shipChoice", entry.shipChoice ?? null);
-        existing.sprite.setData("aimRotation", entry.rotation);
-      }
+      const ctx: UpsertRemotePlayerContext = {
+        add: this.add,
+        physics: this.physics,
+        otherPlayersGroup: this.otherPlayersGroup,
+        otherPlayers: this.otherPlayers,
+        formatPilotName: (nickname, level) => this.formatPilotName(nickname, level),
+        updateRemoteHealthBar: (bar, sprite, health, maxHealth) =>
+          this.updateRemoteHealthBar(bar, sprite, health, maxHealth),
+      };
+      upsertRemotePlayerFromModule(ctx, entry);
     }
 
     private showBlackHoleTooltip() {
@@ -1269,19 +1215,7 @@ const createSpaceArenaScene = (
       health: number,
       maxHealth: number
     ) {
-      const ratio = Phaser.Math.Clamp(health / maxHealth, 0, 1);
-      const width = 46;
-      const height = 6;
-      const x = sprite.x - width / 2;
-      const y = sprite.y - sprite.displayHeight * 0.6 - 10;
-      bar.clear();
-      bar.fillStyle(0x0f141b, 0.85);
-      bar.fillRoundedRect(x, y, width, height, 3);
-      bar.fillStyle(0x35d06a, 1);
-      bar.fillRoundedRect(x + 1.5, y + 1.5, (width - 3) * ratio, height - 3, 2);
-      bar.lineStyle(1, 0x0b1a0f, 0.9);
-      bar.strokeRoundedRect(x, y, width, height, 3);
-      bar.setDepth(sprite.depth + 2);
+      updateRemoteHealthBarFromModule(Phaser, bar, sprite, health, maxHealth);
     }
 
     private spawnRemoteLaser(sprite: Phaser.Physics.Arcade.Sprite, shooterUserId?: number) {
@@ -2206,61 +2140,18 @@ const createSpaceArenaScene = (
     }
 
     private interpolateRemotePlayers() {
-      const renderTime =
-        Date.now() + this.serverTimeOffset - REMOTE_INTERPOLATION_DELAY;
-      for (const [userId, remote] of this.otherPlayers.entries()) {
-        const buffer = this.remoteSnapshots.get(userId);
-        if (!buffer || buffer.length === 0) {
-          continue;
-        }
-        while (buffer.length >= 2 && buffer[1].updatedAt <= renderTime) {
-          buffer.shift();
-        }
-        const snapshotA = buffer[0];
-        const snapshotB = buffer.length > 1 ? buffer[1] : null;
-        let x = snapshotA.x;
-        let y = snapshotA.y;
-        let rotation = snapshotA.rotation;
-        let health = snapshotA.health;
-        let maxHealth = snapshotA.maxHealth;
-        let invulnerableUntil = snapshotA.invulnerableUntil ?? 0;
-        if (snapshotB) {
-          const span = snapshotB.updatedAt - snapshotA.updatedAt;
-          const alpha = span > 0 ? (renderTime - snapshotA.updatedAt) / span : 0;
-          const t = Phaser.Math.Clamp(alpha, 0, 1);
-          x = Phaser.Math.Linear(snapshotA.x, snapshotB.x, t);
-          y = Phaser.Math.Linear(snapshotA.y, snapshotB.y, t);
-          const delta = Phaser.Math.Angle.Wrap(
-            snapshotB.rotation - snapshotA.rotation
-          );
-          rotation = snapshotA.rotation + delta * t;
-          health = Phaser.Math.Linear(snapshotA.health, snapshotB.health, t);
-          maxHealth = snapshotB.maxHealth;
-          invulnerableUntil = snapshotB.invulnerableUntil ?? invulnerableUntil;
-        }
-        remote.sprite.setPosition(x, y);
-        const zone = this.lastWorldSafeZone;
-        const zoneActive = zone && (zone.expiresAt ?? 0) > Date.now();
-        const remoteInSafeZone =
-          zoneActive && this.isInsideSafeZone(zone, x, y);
-        remote.sprite.setAlpha(
-          remoteInSafeZone ? 0.35 : invulnerableUntil > Date.now() ? 0.55 : 1
-        );
-        const remoteChoice = remote.sprite.getData("shipChoice") as
-          | string
-          | null
-          | undefined;
-        remote.sprite.setRotation(
-          rotation + getSkinRotationOffset(remoteChoice)
-        );
-        remote.sprite.setData("aimRotation", rotation);
-        remote.sprite.setDepth(y);
-        remote.nameText.setPosition(x, y - 68);
-        const nickname = snapshotB?.nickname ?? snapshotA.nickname ?? "Пилот";
-        const level = snapshotB?.level ?? snapshotA.level ?? 1;
-        remote.nameText.setText(this.formatPilotName(nickname, level));
-        this.updateRemoteHealthBar(remote.healthBar, remote.sprite, health, maxHealth);
-      }
+      const ctx: InterpolateRemotePlayersContext = {
+        getServerTimeOffset: () => this.getServerTimeOffset(),
+        remoteSnapshots: this.remoteSnapshots,
+        otherPlayers: this.otherPlayers,
+        lastWorldSafeZone: this.lastWorldSafeZone,
+        isInsideSafeZone: (zone, x, y) => this.isInsideSafeZone(zone, x, y),
+        formatPilotName: (nickname, level) => this.formatPilotName(nickname, level),
+        updateRemoteHealthBar: (bar, sprite, health, maxHealth) =>
+          this.updateRemoteHealthBar(bar, sprite, health, maxHealth),
+        Phaser,
+      };
+      interpolateRemotePlayersFromModule(ctx);
     }
     private formatPilotName(nickname: string | null | undefined, level?: number) {
       const name = nickname && nickname.trim() ? nickname : "Пилот";

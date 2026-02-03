@@ -18,3 +18,18 @@ export type {
   WorldPayloadContext,
   ConnectSocketContext,
 } from "./socketHandlers";
+export {
+  queueRemoteSnapshot,
+  upsertRemotePlayer,
+  updateRemoteHealthBar,
+  interpolateRemotePlayers,
+} from "./remotePlayers";
+export type {
+  RemoteSnapshotEntry,
+  QueueRemoteSnapshotEntry,
+  UpsertRemotePlayerEntry,
+  RemotePlayerEntry,
+  QueueRemoteSnapshotContext,
+  UpsertRemotePlayerContext,
+  InterpolateRemotePlayersContext,
+} from "./remotePlayers";
