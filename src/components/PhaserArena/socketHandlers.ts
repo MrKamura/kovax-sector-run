@@ -1,3 +1,4 @@
+import ReconnectingWebSocket from "reconnecting-websocket";
 import type { WorldState } from "./types";
 
 export type PresenceEntry = {
@@ -63,11 +64,10 @@ export interface WorldPayloadContext {
 
 /** Context required to connect and maintain the socket. */
 export interface ConnectSocketContext {
-  setSocket(socket: WebSocket | undefined): void;
+  setSocket(socket: WebSocket | ReconnectingWebSocket | undefined): void;
   setInvulnerableUntil(ms: number): void;
   handleSocketMessage(payload: Record<string, unknown>): void;
   getSocketShouldReconnect(): boolean;
-  scheduleReconnect(fn: () => void): void;
 }
 
 export function handlePresencePayload(
@@ -129,7 +129,7 @@ export function handleWorldPayload(
 }
 
 export function sendWorldAction(
-  socket: WebSocket | undefined,
+  socket: WebSocket | ReconnectingWebSocket | undefined,
   type: string,
   payload: Record<string, unknown>
 ): void {
@@ -144,6 +144,14 @@ export function sendWorldAction(
   );
 }
 
+const RWS_OPTIONS = {
+  minReconnectionDelay: 800,
+  maxReconnectionDelay: 5000,
+  reconnectionDelayGrowFactor: 1.2,
+  connectionTimeout: 10_000,
+  maxRetries: Infinity,
+} as const;
+
 export function connectSocket(
   context: ConnectSocketContext,
   options: {
@@ -156,27 +164,19 @@ export function connectSocket(
   }
   context.setInvulnerableUntil(options.spawnImmunityMs);
   const url = options.getSocketUrl();
-  let socket: WebSocket;
+  let rws: ReconnectingWebSocket;
   try {
-    socket = new WebSocket(url);
+    rws = new ReconnectingWebSocket(url, undefined, RWS_OPTIONS);
   } catch {
     return;
   }
-  context.setSocket(socket);
-  socket.onmessage = (event) => {
+  context.setSocket(rws);
+  rws.onmessage = (event) => {
     try {
       const payload = JSON.parse(event.data as string) as Record<string, unknown>;
       context.handleSocketMessage(payload);
     } catch {
       // ignore malformed payloads
     }
-  };
-  socket.onclose = () => {
-    if (!context.getSocketShouldReconnect()) {
-      return;
-    }
-    context.scheduleReconnect(() => {
-      connectSocket(context, options);
-    });
   };
 }

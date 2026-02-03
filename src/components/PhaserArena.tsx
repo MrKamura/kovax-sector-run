@@ -129,7 +129,6 @@ const createSpaceArenaScene = (
     >();
     private socket?: WebSocket;
     private socketShouldReconnect = true;
-    private socketReconnectTimer?: Phaser.Time.TimerEvent;
     private serverTimeOffset = 0;
     private playerPulse?: Phaser.Tweens.Tween;
     private playerFacing: "n" | "s" | "e" | "w" = "s";
@@ -786,19 +785,13 @@ const createSpaceArenaScene = (
       connectSocketFromModule(
         {
           setSocket: (ws) => {
-            this.socket = ws;
+            this.socket = ws as WebSocket;
           },
           setInvulnerableUntil: (ms) => {
             this.invulnerableUntil = ms;
           },
           handleSocketMessage: (payload) => this.handleSocketMessage(payload),
           getSocketShouldReconnect: () => this.socketShouldReconnect,
-          scheduleReconnect: (fn) => {
-            if (this.socketReconnectTimer) {
-              this.socketReconnectTimer.remove(false);
-            }
-            this.socketReconnectTimer = this.time.delayedCall(800, fn);
-          },
         },
         {
           spawnImmunityMs: SPAWN_IMMUNITY_UNTIL_FIRST_ACTION,
@@ -1119,10 +1112,6 @@ const createSpaceArenaScene = (
 
     private clearPresence() {
       this.socketShouldReconnect = false;
-      if (this.socketReconnectTimer) {
-        this.socketReconnectTimer.remove(false);
-        this.socketReconnectTimer = undefined;
-      }
       if (this.socket && this.socket.readyState === WebSocket.OPEN) {
         try {
           this.socket.send(JSON.stringify({ type: "disconnect" }));
