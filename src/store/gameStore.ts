@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { immer } from "zustand/middleware/immer";
 import { DEFAULT_PLAYER } from "@/lib/gameDefaults";
 import { getSkillDef } from "@/lib/skills";
 
@@ -213,7 +214,8 @@ const scheduleSaveAudioSettings = (next: {
   }, 350);
 };
 
-export const useGameStore = create<GameStore>((set) => ({
+export const useGameStore = create<GameStore>()(
+  immer((set) => ({
   player: null,
   // IMPORTANT: don't read localStorage during initial render (SSR hydration mismatch).
   // We'll load the cached user inside `loadSession()` (runs on the client).
@@ -257,13 +259,13 @@ export const useGameStore = create<GameStore>((set) => ({
     try {
       const data = await request<{ user: UserState | null }>("/api/auth/me");
       saveCachedUser(data.user);
-      set((state) => ({
-        user: data.user,
-        authLoading: false,
-        sessionReady: true,
-        musicVolume: data.user?.musicVolume ?? state.musicVolume,
-        sfxVolume: data.user?.sfxVolume ?? state.sfxVolume,
-      }));
+      set((state) => {
+        state.user = data.user;
+        state.authLoading = false;
+        state.sessionReady = true;
+        if (data.user?.musicVolume != null) state.musicVolume = data.user.musicVolume;
+        if (data.user?.sfxVolume != null) state.sfxVolume = data.user.sfxVolume;
+      });
     } catch (error) {
       const cached = loadCachedUser();
       set({
@@ -292,17 +294,13 @@ export const useGameStore = create<GameStore>((set) => ({
       set((state) => {
         const wasDead = (state.player?.health ?? 1) <= 0;
         const isDead = (playerWithDefaults.health ?? 1) <= 0;
-        const nextDeathInfo =
-          (playerWithDefaults.health ?? 1) <= 0 ? state.deathInfo : null;
-        return {
-          player: playerWithDefaults,
-          user: data.user,
-          isLoading: false,
-          deathInfo: nextDeathInfo,
-          pendingRespawn: isDead ? (wasDead ? state.pendingRespawn : false) : false,
-          musicVolume: data.user?.musicVolume ?? state.musicVolume,
-          sfxVolume: data.user?.sfxVolume ?? state.sfxVolume,
-        };
+        state.player = playerWithDefaults;
+        state.user = data.user;
+        state.isLoading = false;
+        state.deathInfo = (playerWithDefaults.health ?? 1) <= 0 ? state.deathInfo : null;
+        state.pendingRespawn = isDead ? (wasDead ? state.pendingRespawn : false) : false;
+        if (data.user?.musicVolume != null) state.musicVolume = data.user.musicVolume;
+        if (data.user?.sfxVolume != null) state.sfxVolume = data.user.sfxVolume;
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Load failed.";
@@ -431,12 +429,9 @@ export const useGameStore = create<GameStore>((set) => ({
       set((state) => {
         const wasDead = (state.player?.health ?? 1) <= 0;
         const isDead = (data.player.health ?? 1) <= 0;
-        return {
-          player: data.player,
-          deathInfo: data.death ?? state.deathInfo,
-          // If this hit caused a new death, clear any stale respawn request.
-          pendingRespawn: isDead ? (wasDead ? state.pendingRespawn : false) : false,
-        };
+        state.player = data.player;
+        state.deathInfo = data.death ?? state.deathInfo;
+        state.pendingRespawn = isDead ? (wasDead ? state.pendingRespawn : false) : false;
       });
     } catch (error) {
       set({
@@ -476,31 +471,22 @@ export const useGameStore = create<GameStore>((set) => ({
   },
   applyPlayerUpdate: (patch) => {
     set((state) => {
-      if (!state.player) {
-        return state;
-      }
-      const nextPlayer = { ...state.player, ...patch };
-      const shouldClearDeath = (patch.health ?? nextPlayer.health) > 0;
+      if (!state.player) return;
       const wasDead = (state.player.health ?? 1) <= 0;
-      const isDead = (nextPlayer.health ?? 1) <= 0;
+      Object.assign(state.player, patch);
+      const shouldClearDeath = (patch.health ?? state.player.health) > 0;
+      const isDead = (state.player.health ?? 1) <= 0;
       const newLevel = typeof patch.level === "number" ? patch.level : null;
       const prevLevel = state.player.level ?? 1;
-      const levelUpCelebration =
-        newLevel != null && newLevel > prevLevel
-          ? { level: newLevel, previousLevel: prevLevel }
-          : null;
-      return {
-        player: nextPlayer,
-        deathInfo: shouldClearDeath ? null : state.deathInfo,
-        levelUpCelebration: levelUpCelebration ?? state.levelUpCelebration,
-        pendingRespawn: shouldClearDeath
-          ? false
-          : isDead
-          ? wasDead
-            ? state.pendingRespawn
-            : false
-          : false,
-      };
+      if (shouldClearDeath) state.deathInfo = null;
+      if (newLevel != null && newLevel > prevLevel) {
+        state.levelUpCelebration = { level: newLevel, previousLevel: prevLevel };
+      }
+      if (shouldClearDeath) {
+        state.pendingRespawn = false;
+      } else if (isDead && !wasDead) {
+        state.pendingRespawn = false;
+      }
     });
   },
   addSkill: async (skill) => {
@@ -583,12 +569,9 @@ export const useGameStore = create<GameStore>((set) => ({
       }
       const cooldownMs = def.cooldownMs ?? 0;
       if (cooldownMs > 0) {
-        set((s) => ({
-          skillCooldowns: {
-            ...s.skillCooldowns,
-            [def.id]: Date.now() + cooldownMs,
-          },
-        }));
+        set((s) => {
+          s.skillCooldowns[def.id] = Date.now() + cooldownMs;
+        });
       }
       return true;
     } catch {
@@ -611,14 +594,13 @@ export const useGameStore = create<GameStore>((set) => ({
     set({ pendingRespawn: false, vengeanceRespawnTargetUserId: null }),
   setMusicVolume: (value) =>
     set((state) => {
-      const next = Math.max(0, Math.min(1, Number(value) || 0));
-      scheduleSaveAudioSettings({ musicVolume: next });
-      return { musicVolume: next };
+      state.musicVolume = Math.max(0, Math.min(1, Number(value) || 0));
+      scheduleSaveAudioSettings({ musicVolume: state.musicVolume });
     }),
   setSfxVolume: (value) =>
     set((state) => {
-      const next = Math.max(0, Math.min(1, Number(value) || 0));
-      scheduleSaveAudioSettings({ sfxVolume: next });
-      return { sfxVolume: next };
+      state.sfxVolume = Math.max(0, Math.min(1, Number(value) || 0));
+      scheduleSaveAudioSettings({ sfxVolume: state.sfxVolume });
     }),
-}));
+  }))
+);
