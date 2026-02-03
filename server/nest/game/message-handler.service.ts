@@ -55,7 +55,7 @@ function startSpawnImmunityIfNeeded(
 
 /**
  * Handles all WebSocket message types from the game client.
- * Ported from server/index.js – each branch corresponds to message.type.
+ * Each branch corresponds to message.type.
  * When gateway passes resolved services (createApplicationContext), use them; else use injected.
  */
 @Injectable()
@@ -222,29 +222,27 @@ export class MessageHandlerService {
     let exp = 0;
     let expToNext = expToNextLevel(level);
     let resources: { scrap: number; tokens: number } = { scrap: 0, tokens: 0 };
-    const expResult = await services.db.pool.query(
-      `SELECT exp, "expToNext", resources, "monsterProgress" FROM players WHERE "userId" = $1`,
-      [user.id]
-    );
-    if (expResult.rowCount && expResult.rowCount > 0) {
-      const progress = (expResult.rows[0].monsterProgress as Record<string, unknown>) || {};
+    const expRow = await services.db.Player.findOne({
+      where: { userId: user.id },
+      attributes: ["exp", "expToNext", "resources", "monsterProgress"],
+    });
+    if (expRow) {
+      const progress = (expRow.monsterProgress as Record<string, unknown>) || {};
       const stored = getMonsterProgressEntry(progress, monsterKey);
       if (stored) {
         level = Number(stored.level) || level;
         exp = Number(stored.exp) || 0;
         expToNext = Number(stored.expToNext) || expToNextLevel(level);
       } else {
-        exp = Number(expResult.rows[0].exp) || 0;
-        expToNext = Number(expResult.rows[0].expToNext) || expToNextLevel(level);
+        exp = Number(expRow.exp) || 0;
+        expToNext = Number(expRow.expToNext) || expToNextLevel(level);
       }
-      resources = (expResult.rows[0].resources as { scrap: number; tokens: number }) || resources;
+      resources = (expRow.resources as { scrap: number; tokens: number }) || resources;
     }
     const stats = playerStatsForLevel(level, monsterKey);
     const energyCap = energyCapForLevel(level);
     const nextResources = { scrap: energyCap, tokens: Number(resources.tokens || 0) };
-    const progress = expResult.rowCount && expResult.rowCount > 0
-      ? ((expResult.rows[0].monsterProgress as Record<string, unknown>) || {})
-      : {};
+    const progress = expRow ? ((expRow.monsterProgress as Record<string, unknown>) || {}) : {};
     const nextProgress = {
       ...progress,
       [monsterKey]: {
@@ -256,9 +254,19 @@ export class MessageHandlerService {
         health: stats.maxHealth,
       },
     };
-    await services.db.pool.query(
-      `UPDATE players SET "posX" = $1, "posY" = $2, "rotation" = $3, "lastPositionAt" = NOW(), "lastHealthAt" = NOW(), health = $4, "maxHealth" = $5, resources = $6, "monsterProgress" = $7 WHERE "userId" = $8`,
-      [spawnX, spawnY, rotation, stats.maxHealth, stats.maxHealth, nextResources, nextProgress, user.id]
+    await services.db.Player.update(
+      {
+        posX: spawnX,
+        posY: spawnY,
+        rotation,
+        lastPositionAt: new Date(),
+        lastHealthAt: new Date(),
+        health: stats.maxHealth,
+        maxHealth: stats.maxHealth,
+        resources: nextResources,
+        monsterProgress: nextProgress as Record<string, { level?: number; exp?: number; expToNext?: number; health?: number; maxHealth?: number; damage?: number }>,
+      },
+      { where: { userId: user.id } }
     );
     const invulnerableUntil = Date.now() + 10000;
     const zone = sector.world.safeZone;
@@ -419,7 +427,8 @@ export class MessageHandlerService {
     if (targetSectorId && Number.isFinite(targetLevel)) {
       if (sector.level === 1 && targetLevel === 2 && (entry.level || 1) < 3) return;
     }
-    sector.world.blackHoles = sector.world.blackHoles.filter((h: { id: string }) => h.id !== hole!.id);
+    const holeId = hole.id;
+    sector.world.blackHoles = sector.world.blackHoles.filter((h: { id: string }) => h.id !== holeId);
     services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);
     if (targetSectorId && Number.isFinite(targetLevel)) {
       await this.movePlayerToSectorById(user.id, targetSectorId, targetLevel, services);
@@ -474,9 +483,14 @@ export class MessageHandlerService {
       // ignore
     }
     try {
-      await services.db.pool.query(
-        `UPDATE players SET "posX" = $1, "posY" = $2, "rotation" = $3, "lastPositionAt" = NOW() WHERE "userId" = $4`,
-        [spawnX, spawnY, 0, userId]
+      await services.db.Player.update(
+        {
+          posX: spawnX,
+          posY: spawnY,
+          rotation: 0,
+          lastPositionAt: new Date(),
+        },
+        { where: { userId } }
       );
     } catch (err) {
       console.error("Failed to persist sector travel:", err);
@@ -536,9 +550,14 @@ export class MessageHandlerService {
       // ignore
     }
     try {
-      await services.db.pool.query(
-        `UPDATE players SET "posX" = $1, "posY" = $2, "rotation" = $3, "lastPositionAt" = NOW() WHERE "userId" = $4`,
-        [spawnX, spawnY, 0, userId]
+      await services.db.Player.update(
+        {
+          posX: spawnX,
+          posY: spawnY,
+          rotation: 0,
+          lastPositionAt: new Date(),
+        },
+        { where: { userId } }
       );
     } catch (err) {
       console.error("Failed to persist sector travel:", err);
@@ -561,16 +580,19 @@ export class MessageHandlerService {
       if (pickup.resource === "tokens" && (pickup.amount == null || pickup.amount > 0)) {
         const addTokens = Math.max(1, Number(pickup.amount) || 1);
         try {
-          const res = await services.db.pool.query(`SELECT resources FROM players WHERE "userId" = $1`, [user.id]);
-          if (res.rowCount && res.rowCount > 0) {
-            const resources = (res.rows[0].resources as { scrap?: number; tokens?: number }) || { scrap: 0, tokens: 0 };
+          const player = await services.db.Player.findOne({
+            where: { userId: user.id },
+            attributes: ["resources"],
+          });
+          if (player) {
+            const resources = (player.resources as { scrap?: number; tokens?: number }) || { scrap: 0, tokens: 0 };
             const nextResources = {
-              ...resources,
+              scrap: Number(resources.scrap ?? 0) || 0,
               tokens: (Number(resources.tokens ?? 0) || 0) + addTokens,
             };
-            await services.db.pool.query(
-              `UPDATE players SET resources = $1 WHERE "userId" = $2`,
-              [nextResources, user.id]
+            await services.db.Player.update(
+              { resources: nextResources },
+              { where: { userId: user.id } }
             );
             services.broadcast.sendPlayerUpdate(user.id, { resources: nextResources }, services.presence);
           }
@@ -886,21 +908,21 @@ export class MessageHandlerService {
     }
     if (!damage) return;
 
-    const victimRow = await services.db.pool.query(
-      `SELECT health, exp, resources, "monsterProgress" FROM players WHERE "userId" = $1`,
-      [targetUserId]
-    );
-    if (!victimRow.rowCount || victimRow.rowCount === 0) return;
-    const storedHealth = Number(victimRow.rows[0].health);
+    const victimRow = await services.db.Player.findOne({
+      where: { userId: targetUserId },
+      attributes: ["health", "exp", "resources", "monsterProgress"],
+    });
+    if (!victimRow) return;
+    const storedHealth = Number(victimRow.health);
     const currentHealth = Number.isFinite(storedHealth) ? storedHealth : Number(victim.health || 0);
     const victimInFury = victim.furyExpiresAt && victim.furyExpiresAt > now;
     const minHealth = victimInFury ? 1 : 0;
     const nextHealth = Math.max(minHealth, currentHealth - damage);
 
-    let resources = (victimRow.rows[0].resources as { scrap?: number; tokens?: number }) || { scrap: 0, tokens: 0 };
+    let resources = (victimRow.resources as { scrap?: number; tokens?: number }) || { scrap: 0, tokens: 0 };
     const tokens = Number(resources.tokens ?? 0) || 0;
-    let exp = Number(victimRow.rows[0].exp ?? 0) || 0;
-    const progress = (victimRow.rows[0].monsterProgress as Record<string, unknown>) || {};
+    let exp = Number(victimRow.exp ?? 0) || 0;
+    const progress = (victimRow.monsterProgress as Record<string, unknown>) || {};
     const victimMonsterKey = normalizeMonsterChoice(victim.shipChoice);
     const storedProgress = getMonsterProgressEntry(progress, victimMonsterKey) || {};
     const nextProgress = {
@@ -949,14 +971,19 @@ export class MessageHandlerService {
       }
       try {
         if (lostTokens > 0) {
-          const killerRow = await services.db.pool.query(`SELECT resources FROM players WHERE "userId" = $1`, [user.id]);
-          const killerResources =
-            killerRow.rowCount && killerRow.rows[0]
-              ? ((killerRow.rows[0].resources as { scrap?: number; tokens?: number }) || { scrap: 0, tokens: 0 })
-              : { scrap: 0, tokens: 0 };
-          const killerTokens = Number(killerResources.tokens ?? 0) || 0;
-          (killerResources as { tokens: number }).tokens = killerTokens + lostTokens;
-          await services.db.pool.query(`UPDATE players SET resources = $1 WHERE "userId" = $2`, [killerResources, user.id]);
+          const killerRow = await services.db.Player.findOne({
+            where: { userId: user.id },
+            attributes: ["resources"],
+          });
+          const rawKiller = killerRow?.resources as { scrap?: number; tokens?: number } | undefined;
+          const killerResources = {
+            scrap: Number(rawKiller?.scrap ?? 0) || 0,
+            tokens: (Number(rawKiller?.tokens ?? 0) || 0) + lostTokens,
+          };
+          await services.db.Player.update(
+            { resources: killerResources },
+            { where: { userId: user.id } }
+          );
           services.broadcast.sendPlayerUpdate(user.id, { resources: killerResources }, services.presence);
         }
         if (lostExp > 0) {
@@ -991,9 +1018,19 @@ export class MessageHandlerService {
     }
 
     try {
-      await services.db.pool.query(
-        `UPDATE players SET health = $1, "lastHealthAt" = NOW(), exp = $2, resources = $3, "monsterProgress" = $4 WHERE "userId" = $5`,
-        [nextHealth, exp, resources, nextProgress, targetUserId]
+      const updateResources = {
+        scrap: Number(resources.scrap ?? 0) || 0,
+        tokens: Number(resources.tokens ?? 0) || 0,
+      };
+      await services.db.Player.update(
+        {
+          health: nextHealth,
+          lastHealthAt: new Date(),
+          exp,
+          resources: updateResources,
+          monsterProgress: nextProgress as Record<string, { level?: number; exp?: number; expToNext?: number; health?: number; maxHealth?: number; damage?: number }>,
+        },
+        { where: { userId: targetUserId } }
       );
     } catch (err) {
       console.error("Failed to persist PvP damage:", err);

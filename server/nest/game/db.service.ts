@@ -1,5 +1,7 @@
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
-import { Pool } from "pg";
+import { Sequelize, Op } from "sequelize";
+import * as pg from "pg";
+import { initModels, UserModel, SessionModel, PlayerModel, ChatMessageModel } from "../models";
 
 export interface ResolvedUser {
   id: number;
@@ -9,18 +11,34 @@ export interface ResolvedUser {
 
 @Injectable()
 export class DbService implements OnModuleDestroy {
-  readonly pool: Pool;
+  readonly sequelize: Sequelize;
+  readonly User: typeof UserModel;
+  readonly Session: typeof SessionModel;
+  readonly Player: typeof PlayerModel;
+  readonly ChatMessage: typeof ChatMessageModel;
 
   constructor() {
     const url = process.env.DATABASE_URL;
     if (!url) {
-      throw new Error("DATABASE_URL is required for presence server.");
+      throw new Error("DATABASE_URL is required.");
     }
-    this.pool = new Pool({ connectionString: url });
+    this.sequelize = new Sequelize(url, {
+      dialect: "postgres",
+      dialectModule: pg,
+      logging: false,
+      define: {
+        underscored: false,
+      },
+    });
+    initModels(this.sequelize);
+    this.User = UserModel;
+    this.Session = SessionModel;
+    this.Player = PlayerModel;
+    this.ChatMessage = ChatMessageModel;
   }
 
-  async onModuleDestroy() {
-    await this.pool.end();
+  async onModuleDestroy(): Promise<void> {
+    await this.sequelize.close();
   }
 
   parseCookies(cookieHeader = ""): Record<string, string> {
@@ -40,22 +58,25 @@ export class DbService implements OnModuleDestroy {
   async resolveUser(sessionToken: string | undefined): Promise<ResolvedUser | null> {
     if (!sessionToken) return null;
     try {
-      const session = await this.pool.query(
-        `SELECT "userId" FROM sessions WHERE token = $1 AND ("expiresAt" IS NULL OR "expiresAt" > NOW())`,
-        [sessionToken]
-      );
-      if (session.rowCount === 0) return null;
-      const userId = session.rows[0].userId;
-      const user = await this.pool.query(
-        `SELECT id, nickname, "shipChoice" FROM users WHERE id = $1`,
-        [userId]
-      );
-      if (user.rowCount === 0) return null;
-      const row = user.rows[0];
+      const session = await this.Session.findOne({
+        where: {
+          token: sessionToken,
+          [Op.or]: [
+            { expiresAt: null },
+            { expiresAt: { [Op.gt]: new Date() } },
+          ],
+        },
+        attributes: ["userId"],
+      });
+      if (!session) return null;
+      const user = await this.User.findByPk(session.userId, {
+        attributes: ["id", "nickname", "shipChoice"],
+      });
+      if (!user) return null;
       return {
-        id: row.id,
-        nickname: row.nickname ?? null,
-        shipChoice: row.shipChoice ?? null,
+        id: user.id,
+        nickname: user.nickname ?? null,
+        shipChoice: user.shipChoice ?? null,
       };
     } catch (err) {
       console.error("Auth error:", err);

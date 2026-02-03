@@ -171,7 +171,8 @@ export class SectorService {
   private createBlackHole(sector: Sector): void {
     if (!Array.isArray(sector.world.blackHoles)) sector.world.blackHoles = [];
     if (sector.world.blackHoles.length >= MAX_BLACK_HOLES_PER_SECTOR) return;
-    const greenOrYellow = rand() < 0.5 ? 1 : 2;
+    // Use Math.random() so ~50% of portals lead to yellow (level 2), not biased by seeded RNG
+    const greenOrYellow = Math.random() < 0.5 ? 1 : 2;
     const targetSector = this.pickRandomSector(greenOrYellow, sector.id);
     if (!targetSector || targetSector.id === sector.id) return;
     const { x, y } = this.randomPositionInSector(
@@ -183,15 +184,20 @@ export class SectorService {
     const durationMs = BLACK_HOLE_DURATION_MS * (0.5 + rand());
     const now = Date.now();
     const appearsAt = now + appearDelayMs;
+    const namePrefix = targetSector.config?.namePrefix ?? "Sector";
+    const targetName =
+      targetSector.name && String(targetSector.name).trim()
+        ? targetSector.name
+        : `${namePrefix} L${targetSector.level} • ?-${randInt(1, 99)}`;
     const hole: BlackHoleState = {
       id: `bh-${now}-${randInt(100, 999)}`,
       x,
       y,
       type: "warp",
       targetSectorId: targetSector.id,
-      targetSectorName: targetSector.name,
-      targetLevel: targetSector.level,
-      targetColor: targetSector.config.color,
+      targetSectorName: targetName,
+      targetLevel: Math.max(1, Math.min(2, targetSector.level)),
+      targetColor: targetSector.config?.color ?? "#2ecc71",
       appearsAt,
       expiresAt: appearsAt + durationMs,
     };
@@ -264,13 +270,15 @@ export class SectorService {
   }
 
   createSector(level: number): Sector {
-    const config = SECTOR_CONFIGS[level];
+    const safeLevel = Math.max(1, Math.min(2, level));
+    const config = SECTOR_CONFIGS[safeLevel];
     if (!config) throw new Error(`Unknown sector level: ${level}`);
-    const sectorId = `L${level}-${Date.now()}-${randInt(100, 999)}`;
+    const sectorId = `L${safeLevel}-${Date.now()}-${randInt(100, 999)}`;
+    const rawName = generateSectorName(safeLevel);
     const sector: Sector = {
       id: sectorId,
-      level,
-      name: generateSectorName(level),
+      level: safeLevel,
+      name: (rawName && String(rawName).trim()) ? rawName : `${config.namePrefix} L${safeLevel} • ?-${randInt(1, 99)}`,
       config: { ...config },
       world: this.createWorld(),
       createdAt: Date.now(),
@@ -330,19 +338,30 @@ export class SectorService {
           movesAt: sector.world.lastSafeZoneMoveAt + SAFE_ZONE_COOLDOWN_MS,
         }
       : null;
+    const sectorName =
+      sector.name && String(sector.name).trim()
+        ? sector.name
+        : `${sector.config?.namePrefix ?? "Sector"} L${sector.level}`;
     return {
       seed: sector.world.seed,
       sector: {
         id: sector.id,
-        name: sector.name,
-        level: sector.level,
-        color: sector.config.color,
+        name: sectorName,
+        level: Math.max(1, Math.min(2, sector.level)),
+        color: sector.config?.color ?? "#2ecc71",
         width: sector.config.width,
         height: sector.config.height,
       },
-      blackHoles: (sector.world.blackHoles || []).filter(
-        (h) => (h.appearsAt ?? 0) <= now && h.expiresAt > now
-      ),
+      blackHoles: (sector.world.blackHoles || [])
+        .filter((h) => (h.appearsAt ?? 0) <= now && h.expiresAt > now)
+        .map((h) => ({
+          ...h,
+          targetSectorName:
+            h.targetSectorName && String(h.targetSectorName).trim()
+              ? h.targetSectorName
+              : `Sector L${Math.max(1, Math.min(2, h.targetLevel ?? 1))}`,
+          targetLevel: Math.max(1, Math.min(2, h.targetLevel ?? 1)),
+        })),
       safeZone,
       pickups: Array.from(sector.world.pickups.values()),
       enemies: Array.from(sector.world.enemies.values()).map((e) => {

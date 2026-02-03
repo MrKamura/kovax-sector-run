@@ -55,20 +55,24 @@ async function persistHealthForTick(
   shipChoice: string | null | undefined
 ): Promise<void> {
   try {
-    const res = await db.pool.query(
-      `SELECT "monsterProgress" FROM players WHERE "userId" = $1`,
-      [userId]
-    );
-    const progress = res.rowCount ? res.rows[0].monsterProgress || {} : {};
+    const player = await db.Player.findOne({
+      where: { userId },
+      attributes: ["monsterProgress"],
+    });
+    const progress = (player?.monsterProgress as Record<string, unknown>) || {};
     const key = normalizeMonsterChoice(shipChoice);
     const stored = getMonsterProgressEntry(progress, key) || {};
     const nextProgress = {
       ...progress,
       [key]: { ...stored, health: next },
     };
-    await db.pool.query(
-      `UPDATE players SET health = $1, "lastHealthAt" = NOW(), "monsterProgress" = $2 WHERE "userId" = $3`,
-      [next, nextProgress, userId]
+    await db.Player.update(
+      {
+        health: next,
+        lastHealthAt: new Date(),
+        monsterProgress: nextProgress as Record<string, unknown>,
+      },
+      { where: { userId } }
     );
   } catch {
     // ignore

@@ -150,24 +150,24 @@ export class GameGateway {
 
     if (!existingPresence) {
       try {
-        const playerRow = await db.pool.query(
-          `SELECT "posX", "posY", "rotation", "health", "maxHealth", "level", "exp", "expToNext", "damage", "monsterProgress" FROM players WHERE "userId" = $1`,
-          [user.id]
-        );
-        if (playerRow.rowCount && playerRow.rowCount > 0) {
-          const row = playerRow.rows[0];
+        const playerRow = await db.Player.findOne({
+          where: { userId: user.id },
+          attributes: ["posX", "posY", "rotation", "health", "maxHealth", "level", "exp", "expToNext", "damage", "monsterProgress"],
+        });
+        if (playerRow) {
+          const row = playerRow.get();
           posX = Number(row.posX) || 0;
           posY = Number(row.posY) || 0;
           rotation = Number(row.rotation) || 0;
           const monsterKey = normalizeMonsterChoice(user.shipChoice);
-          const progress = row.monsterProgress || {};
+          const progress = (row.monsterProgress as Record<string, unknown>) || {};
           const stored = getMonsterProgressEntry(progress, monsterKey);
           if (stored) {
             level = Number(stored.level) || 1;
             exp = Number(stored.exp) || 0;
             expToNext = Number(stored.expToNext) || expToNextLevel(level);
-            maxHealth = Number(stored.maxHealth) || playerStatsForLevel(level, monsterKey).maxHealth;
-            damage = Number(stored.damage) || playerStatsForLevel(level, monsterKey).damage;
+            maxHealth = Number(stored.maxHealth) ?? playerStatsForLevel(level, monsterKey).maxHealth;
+            damage = Number(stored.damage) ?? playerStatsForLevel(level, monsterKey).damage;
             health = Number(stored.health) || maxHealth;
           } else {
             level = Number(row.level) || 1;

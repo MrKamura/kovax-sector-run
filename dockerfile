@@ -39,11 +39,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/server ./server
 COPY --from=builder --chown=nextjs:nodejs /app/next.config.ts ./next.config.ts
 COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
 
-# 5. Копируем и настраиваем entrypoint для миграций
+# 4. Entrypoint
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 
-# 6. Устанавливаем владельца для всей папки /app на nextjs
+# 5. Устанавливаем владельца для всей папки /app на nextjs
 RUN chown -R nextjs:nodejs /app
 
 # Переключаемся на пользователя nextjs

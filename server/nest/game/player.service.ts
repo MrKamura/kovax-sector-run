@@ -24,11 +24,15 @@ export class PlayerService {
   async savePlayerPosition(entry: PresenceEntry | undefined, dbOverride?: DbService): Promise<void> {
     if (!entry) return;
     const db = dbOverride ?? this.db;
-    if (!db?.pool) return;
     try {
-      await db.pool.query(
-        `UPDATE players SET "posX" = $1, "posY" = $2, "rotation" = $3, "lastPositionAt" = NOW() WHERE "userId" = $4`,
-        [entry.x, entry.y, entry.rotation, entry.userId]
+      await db.Player.update(
+        {
+          posX: entry.x,
+          posY: entry.y,
+          rotation: entry.rotation,
+          lastPositionAt: new Date(),
+        },
+        { where: { userId: entry.userId } }
       );
     } catch (err) {
       console.error("Failed to persist player position:", err);
@@ -67,18 +71,14 @@ export class PlayerService {
   } | null> {
     if (!amount) return null;
     const db = dbOverride ?? this.db;
-    if (!db?.pool) return null;
     const monsterKey = normalizeMonsterChoice(shipChoice);
-    const result = await db.pool.query(
-      `SELECT level, exp, resources, "monsterProgress" FROM players WHERE "userId" = $1`,
-      [userId]
-    );
-    if (result.rowCount === 0) return null;
-    const progress = result.rows[0].monsterProgress || {};
+    const player = await db.Player.findOne({ where: { userId } });
+    if (!player) return null;
+    const progress = (player.monsterProgress as Record<string, unknown>) || {};
     const stored = getMonsterProgressEntry(progress, monsterKey);
-    const previousLevel = clampLevel(Number(stored?.level ?? result.rows[0].level) || 1);
+    const previousLevel = clampLevel(Number(stored?.level ?? player.level) || 1);
     let level = previousLevel;
-    let exp = Number(stored?.exp ?? result.rows[0].exp) || 0;
+    let exp = Number(stored?.exp ?? player.exp) || 0;
     let expToNext = expToNextLevel(level);
     const MAX_PLAYER_LEVEL = 100;
     if (level < MAX_PLAYER_LEVEL) {
@@ -114,7 +114,7 @@ export class PlayerService {
         health,
       },
     };
-    let nextResources = result.rows[0].resources || { scrap: 0, tokens: 0 };
+    let nextResources = (player.resources as { scrap: number; tokens: number }) || { scrap: 0, tokens: 0 };
     const BASE_ENERGY_CAP = 10;
     const ENERGY_CAP_PER_LEVEL = 3;
     if (leveledUp) {
@@ -123,14 +123,29 @@ export class PlayerService {
         scrap: energyCap,
         tokens: Number(nextResources.tokens ?? 0) || 0,
       };
-      await db.pool.query(
-        `UPDATE players SET level = $1, exp = $2, "expToNext" = $3, "maxHealth" = $4, damage = $5, "monsterProgress" = $6, resources = $7 WHERE "userId" = $8`,
-        [level, exp, expToNext, stats.maxHealth, stats.damage, nextProgress, nextResources, userId]
+      await db.Player.update(
+        {
+          level,
+          exp,
+          expToNext,
+          maxHealth: stats.maxHealth,
+          damage: stats.damage,
+          monsterProgress: nextProgress as Record<string, unknown>,
+          resources: nextResources,
+        },
+        { where: { userId } }
       );
     } else {
-      await db.pool.query(
-        `UPDATE players SET level = $1, exp = $2, "expToNext" = $3, "maxHealth" = $4, damage = $5, "monsterProgress" = $6 WHERE "userId" = $7`,
-        [level, exp, expToNext, stats.maxHealth, stats.damage, nextProgress, userId]
+      await db.Player.update(
+        {
+          level,
+          exp,
+          expToNext,
+          maxHealth: stats.maxHealth,
+          damage: stats.damage,
+          monsterProgress: nextProgress as Record<string, unknown>,
+        },
+        { where: { userId } }
       );
     }
     const out: {

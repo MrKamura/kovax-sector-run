@@ -13,37 +13,38 @@ export class ChatService {
     db?: DbService
   ): Promise<ChatMessage[]> {
     const dbService = db ?? this.db;
-    if (!dbService?.pool) return [];
     try {
       if (scope === "global") {
-        const result = await dbService.pool.query(
-          `SELECT id, user_id, nickname, text, created_at FROM chat_messages
-           WHERE scope = 'global' ORDER BY created_at DESC LIMIT $1`,
-          [CHAT_HISTORY_LIMIT]
-        );
-        return result.rows
+        const rows = await dbService.ChatMessage.findAll({
+          where: { scope: "global" },
+          order: [["createdAt", "DESC"]],
+          limit: CHAT_HISTORY_LIMIT,
+          attributes: ["id", "userId", "nickname", "text", "createdAt"],
+        });
+        return rows
           .map((row) => ({
             id: String(row.id),
-            userId: Number(row.user_id),
+            userId: Number(row.userId),
             nickname: String(row.nickname),
             text: String(row.text),
-            createdAt: Number(row.created_at),
+            createdAt: Number(row.createdAt),
           }))
           .reverse();
       }
       if (!sectorId) return [];
-      const result = await dbService.pool.query(
-        `SELECT id, user_id, nickname, text, created_at FROM chat_messages
-         WHERE scope = 'sector' AND sector_id = $1 ORDER BY created_at DESC LIMIT $2`,
-        [sectorId, CHAT_HISTORY_LIMIT]
-      );
-      return result.rows
+      const rows = await dbService.ChatMessage.findAll({
+        where: { scope: "sector", sectorId },
+        order: [["createdAt", "DESC"]],
+        limit: CHAT_HISTORY_LIMIT,
+        attributes: ["id", "userId", "nickname", "text", "createdAt"],
+      });
+      return rows
         .map((row) => ({
           id: String(row.id),
-          userId: Number(row.user_id),
+          userId: Number(row.userId),
           nickname: String(row.nickname),
           text: String(row.text),
-          createdAt: Number(row.created_at),
+          createdAt: Number(row.createdAt),
         }))
         .reverse();
     } catch (err) {
@@ -59,21 +60,19 @@ export class ChatService {
     db?: DbService
   ): Promise<void> {
     const dbService = db ?? this.db;
-    if (!dbService?.pool) return;
     try {
-      await dbService.pool.query(
-        `INSERT INTO chat_messages (id, scope, sector_id, user_id, nickname, text, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING`,
-        [
-          message.id,
+      await dbService.ChatMessage.findOrCreate({
+        where: { id: message.id },
+        defaults: {
+          id: message.id,
           scope,
-          scope === "global" ? null : sectorId,
-          message.userId,
-          message.nickname,
-          message.text,
-          message.createdAt,
-        ]
-      );
+          sectorId: scope === "global" ? null : sectorId,
+          userId: message.userId,
+          nickname: message.nickname,
+          text: message.text,
+          createdAt: message.createdAt,
+        },
+      });
     } catch (err) {
       console.error("Failed to persist chat message:", err);
     }
