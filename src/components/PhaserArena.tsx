@@ -58,6 +58,7 @@ import {
   type UpsertRemotePlayerContext,
   type InterpolateRemotePlayersContext,
 } from "./PhaserArena/remotePlayers";
+import { parseSocketMessage } from "./PhaserArena/socketSchemas";
 
 const createSpaceArenaScene = (
   Phaser: PhaserModule,
@@ -810,118 +811,113 @@ const createSpaceArenaScene = (
     }
 
     private handleSocketMessage(payload: Record<string, unknown>) {
-      const p = payload as {
-        type: string;
-        serverTime?: number;
-        invulnerableUntil?: number;
-        death?: { lostTokens: number; lostExp: number; killedBy?: string; killedByUserId?: number };
-        vengeance?: unknown;
-        hunted?: unknown;
-        players?: PresenceEntry[];
-        world?: WorldState;
-        player?: Record<string, unknown>;
-        posX?: number;
-        posY?: number;
-        x?: number;
-        y?: number;
-        killerName?: string;
-        victimName?: string;
-        attackerUserId?: number;
-        victimUserId?: number;
-        attackerX?: number;
-        attackerY?: number;
-      };
-      if (p.type === "presence" && p.players) {
-        handlePresencePayloadFromModule(this as unknown as PresencePayloadContext, p.players, p.serverTime);
-      }
-      if (p.type === "world" && p.world) {
-        handleWorldPayloadFromModule(this as unknown as WorldPayloadContext, p.world, p.serverTime);
-      }
-      if (p.type === "self") {
-        this.invulnerableUntil = Number(p.invulnerableUntil ?? 0);
-        if (payload.vengeance !== undefined) {
-          useGameStore.getState().setVengeance(payload.vengeance as Parameters<ReturnType<typeof useGameStore.getState>["setVengeance"]>[0]);
+      const msg = parseSocketMessage(payload, (err) => {
+        if (typeof process !== "undefined" && process.env.NODE_ENV === "development") {
+          console.warn("[Socket] Invalid message:", err.flatten());
         }
-        if (payload.hunted !== undefined) {
-          useGameStore.getState().setHunted(payload.hunted as Parameters<ReturnType<typeof useGameStore.getState>["setHunted"]>[0]);
-        }
-        const posX = typeof p.posX === "number" ? p.posX : undefined;
-        const posY = typeof p.posY === "number" ? p.posY : undefined;
-        if (posX != null && posY != null && this.player) {
-          this.player.setPosition(posX, posY);
-          this.appliedServerPosition = true;
-          useGameStore.getState().applyPlayerUpdate({ posX, posY });
-        }
-      }
-      if (p.type === "death" && p.death) {
-        useGameStore.getState().setDeathInfo(p.death);
-      }
-      if (p.type === "player_update" && p.player) {
-        if (p.player.lastPositionAt) {
-          this.appliedServerPosition = false;
-        }
-        if (typeof p.player.health === "number") {
-          this.health = p.player.health;
-        }
-        if (typeof p.player.maxHealth === "number") {
-          this.maxHealth = p.player.maxHealth;
-        }
-        useGameStore.getState().applyPlayerUpdate(p.player);
-        const celebration = useGameStore.getState().levelUpCelebration;
-        if (celebration) {
-          this.triggerLevelUpEffects(celebration);
-        }
-      }
-      if (p.type === "teleport_complete") {
-        const x = Number(p.x);
-        const y = Number(p.y);
-        if (this.player && Number.isFinite(x) && Number.isFinite(y)) {
-          const oldX = this.player.x;
-          const oldY = this.player.y;
-          useGameStore.getState().setActiveSkillEffect(null);
-          this.playTeleportOutEffect(oldX, oldY);
-          this.player.x = x;
-          this.player.y = y;
-          this.playTeleportInEffect(x, y);
-        }
-      }
-      if (p.type === "exit_ready") {
-        const store = useGameStore.getState();
-        store.clearExitCountdown();
-        this.clearPresence();
-        if (store.exitThenLogout) {
-          store.setExitThenLogout(false);
-          void store.logout();
-        }
-      }
-      if (p.type === "sector_kill_flash") {
-        const killerName = String(p.killerName ?? "").trim() || "Пилот";
-        const victimName = String(p.victimName ?? "").trim() || "Пилот";
-        useGameStore.getState().setSectorKillFlash({ killerName, victimName });
-        this.time.delayedCall(2000, () => {
-          useGameStore.getState().setSectorKillFlash(null);
-        });
-      }
-      if (p.type === "player_shot_result") {
-        const myUserId = useGameStore.getState().user?.id ?? null;
-        const victimUserId = Number(p.victimUserId);
-        const attackerUserId = Number(p.attackerUserId);
-        const attackerX = Number(p.attackerX);
-        const attackerY = Number(p.attackerY);
-        if (
-          myUserId != null &&
-          victimUserId === myUserId &&
-          Number.isFinite(attackerUserId) &&
-          Number.isFinite(attackerX) &&
-          Number.isFinite(attackerY)
-        ) {
-          this.lastCorrectiveShotByAttacker.set(attackerUserId, Date.now());
-          const wrongLaser = this.lastRemoteLaserByShooter.get(attackerUserId);
-          if (wrongLaser && Date.now() - wrongLaser.at < 800 && wrongLaser.laser.active) {
-            wrongLaser.laser.destroy();
+      });
+      if (!msg) return;
+
+      switch (msg.type) {
+        case "presence":
+          handlePresencePayloadFromModule(this as unknown as PresencePayloadContext, msg.players, msg.serverTime);
+          break;
+        case "world":
+          handleWorldPayloadFromModule(this as unknown as WorldPayloadContext, msg.world, msg.serverTime);
+          break;
+        case "self": {
+          this.invulnerableUntil = Number(msg.invulnerableUntil ?? 0);
+          if (msg.vengeance !== undefined) {
+            useGameStore.getState().setVengeance(msg.vengeance);
           }
-          this.lastRemoteLaserByShooter.delete(attackerUserId);
-          this.spawnCorrectiveLaser(attackerX, attackerY, attackerUserId);
+          if (msg.hunted !== undefined) {
+            useGameStore.getState().setHunted(msg.hunted);
+          }
+          const posX = msg.posX;
+          const posY = msg.posY;
+          if (posX != null && posY != null && this.player) {
+            this.player.setPosition(posX, posY);
+            this.appliedServerPosition = true;
+            useGameStore.getState().applyPlayerUpdate({ posX, posY });
+          }
+          break;
+        }
+        case "death":
+          useGameStore.getState().setDeathInfo(msg.death);
+          break;
+        case "player_update": {
+          const player = msg.player;
+          if (player.lastPositionAt) {
+            this.appliedServerPosition = false;
+          }
+          if (typeof player.health === "number") {
+            this.health = player.health;
+          }
+          if (typeof player.maxHealth === "number") {
+            this.maxHealth = player.maxHealth;
+          }
+          useGameStore.getState().applyPlayerUpdate(player);
+          const celebration = useGameStore.getState().levelUpCelebration;
+          if (celebration) {
+            this.triggerLevelUpEffects(celebration);
+          }
+          break;
+        }
+        case "teleport_complete": {
+          const x = msg.x ?? NaN;
+          const y = msg.y ?? NaN;
+          if (this.player && Number.isFinite(x) && Number.isFinite(y)) {
+            const oldX = this.player.x;
+            const oldY = this.player.y;
+            useGameStore.getState().setActiveSkillEffect(null);
+            this.playTeleportOutEffect(oldX, oldY);
+            this.player.x = x;
+            this.player.y = y;
+            this.playTeleportInEffect(x, y);
+          }
+          break;
+        }
+        case "exit_ready": {
+          const store = useGameStore.getState();
+          store.clearExitCountdown();
+          this.clearPresence();
+          if (store.exitThenLogout) {
+            store.setExitThenLogout(false);
+            void store.logout();
+          }
+          break;
+        }
+        case "sector_kill_flash": {
+          const killerName = String(msg.killerName ?? "").trim() || "Пилот";
+          const victimName = String(msg.victimName ?? "").trim() || "Пилот";
+          useGameStore.getState().setSectorKillFlash({ killerName, victimName });
+          this.time.delayedCall(2000, () => {
+            useGameStore.getState().setSectorKillFlash(null);
+          });
+          break;
+        }
+        case "player_shot_result": {
+          const myUserId = useGameStore.getState().user?.id ?? null;
+          const victimUserId = msg.victimUserId ?? NaN;
+          const attackerUserId = msg.attackerUserId ?? NaN;
+          const attackerX = msg.attackerX ?? NaN;
+          const attackerY = msg.attackerY ?? NaN;
+          if (
+            myUserId != null &&
+            victimUserId === myUserId &&
+            Number.isFinite(attackerUserId) &&
+            Number.isFinite(attackerX) &&
+            Number.isFinite(attackerY)
+          ) {
+            this.lastCorrectiveShotByAttacker.set(attackerUserId, Date.now());
+            const wrongLaser = this.lastRemoteLaserByShooter.get(attackerUserId);
+            if (wrongLaser && Date.now() - wrongLaser.at < 800 && wrongLaser.laser.active) {
+              wrongLaser.laser.destroy();
+            }
+            this.lastRemoteLaserByShooter.delete(attackerUserId);
+            this.spawnCorrectiveLaser(attackerX, attackerY, attackerUserId);
+          }
+          break;
         }
       }
     }
