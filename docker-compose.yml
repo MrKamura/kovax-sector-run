@@ -1,0 +1,81 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kovax-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-kovax}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-kovax_password}
+      POSTGRES_DB: ${DB_NAME:-kovax_game}
+    ports:
+      - "${DB_PORT:-5432}:5432"  # Можно изменить внешний порт БД если нужно
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-kovax}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - kovax-network
+
+  app:
+    # Serves Next.js + Nest (WebSocket/game) via server/dist/bootstrap.js
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: kovax-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Database
+      DATABASE_URL: ${DATABASE_URL:-postgres://${DB_USER:-kovax}:${DB_PASSWORD:-kovax_password}@postgres:5432/${DB_NAME:-kovax_game}}
+      
+      # App settings
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${APP_PORT:-4000}
+      HOSTNAME: ${HOSTNAME:-0.0.0.0}
+      
+      # WebSocket (если используете отдельный порт)
+      # WS_PORT: ${WS_PORT:-4001}
+      
+      # Другие переменные
+      # SECRET_KEY: ${SECRET_KEY}
+      # JWT_SECRET: ${JWT_SECRET}
+      
+    ports:
+      - "${APP_PORT:-4000}:${APP_PORT:-4000}"
+      # Если используете отдельный порт для WebSocket
+      # - "${WS_PORT:-4001}:${WS_PORT:-4001}"
+    
+    volumes:
+      # Для сохранения uploads если есть
+      - ./uploads:/app/uploads
+      # Для логов
+      - ./logs:/app/logs
+    
+    networks:
+      - kovax-network
+    
+    # Для лучшего управления ресурсами
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+networks:
+  kovax-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
