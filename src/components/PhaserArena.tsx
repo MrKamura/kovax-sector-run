@@ -1,185 +1,46 @@
 import { useGameStore } from "@/store/gameStore";
-
-const MOVE_SPEED = 220;
-// Keeper art is drawn rotated relative to our aim rotation.
-// Rotate the *skin* (visual only) so eyes align with shots, while keeping aim/laser math unchanged.
-// If it still doesn't match perfectly, adjust this angle.
-const KEEPER_SKIN_ROTATION_OFFSET = Math.PI / 2;
-const WORLD_WIDTH = 2200;
-const WORLD_HEIGHT = 1600;
-const REMOTE_INTERPOLATION_DELAY = 140;
-const FURY_SIZE_MULT = 1.25; // Fury skill: keeper appears 25% larger
-/** Server sentinel: invulnerable until first action (then countdown starts). */
-const SPAWN_IMMUNITY_UNTIL_FIRST_ACTION = 1e15;
-
-type PhaserModule = typeof import("phaser");
-type WorldState = {
-  seed: number;
-  sector?: {
-    id: string;
-    name: string;
-    level: number;
-    color: string;
-    width: number;
-    height: number;
-  };
-  blackHoles?: Array<{
-    id: string;
-    x: number;
-    y: number;
-    type: "warp" | "same";
-    targetSectorId?: string;
-    targetSectorName?: string;
-    targetLevel?: number;
-    targetColor?: string;
-    appearsAt?: number;
-    expiresAt: number;
-  }>;
-  safeZone?: {
-    id: string;
-    x: number;
-    y: number;
-    radius: number;
-    expiresAt: number;
-    movesAt: number; // server timestamp (ms) when zone will relocate
-    color: string;
-  } | null;
-  pickups: Array<{
-    id: number;
-    x: number;
-    y: number;
-    resource: "scrap" | "tokens";
-  }>;
-  asteroids: Array<{
-    id: number;
-    x: number;
-    y: number;
-    texture:
-      | "meteor_small"
-      | "meteor_big"
-      | "meteor_grey_small"
-      | "meteor_grey_big";
-    scale: number;
-  }>;
-  enemies: Array<{
-    id: number;
-    x: number;
-    y: number;
-    rotation: number;
-    texture:
-      | "mob_keeper19"
-      | "mob_keeper20"
-      | "enemy_blue_1"
-      | "enemy_red_2"
-      | "enemy_green_3"
-      | "enemy_black_4"
-      | "enemy_alt_blue"
-      | "enemy_alt_red"
-      | "enemy_alt_green"
-      | "enemy_alt_black";
-    level: number;
-    damage: number;
-    health: number;
-    maxHealth: number;
-  }>;
-  gravityPits?: Array<{
-    id: string;
-    x: number;
-    y: number;
-    radius: number;
-    expiresAt: number;
-    ownerUserId?: string | number;
-  }>;
-};
-
-const MONSTER_DEFS: Record<
-  string,
-  {
-    name: string;
-    animKey?: string;
-  }
-> = {
-  // Enemy ships: sci‑fi spacecraft/mission names (RU, international).
-  // One fixed name per ship type so it's readable and consistent.
-  enemy_blue_1: { name: "Союз-5" },
-  enemy_red_2: { name: "Вояджер" },
-  enemy_green_3: { name: "Аполлон-11" },
-  enemy_black_4: { name: "Шэньчжоу-7" },
-  enemy_alt_blue: { name: "Ариан-5" },
-  enemy_alt_red: { name: "Хаябуса-2" },
-  enemy_alt_green: { name: "Чандраян-3" },
-  enemy_alt_black: { name: "Кассини" },
-
-  // Player monsters.
-  mob_keeper19: { name: "Shardling", animKey: "mob_keeper19_idle" },
-  mob_keeper20: { name: "Nullseer", animKey: "mob_keeper20_idle" },
-};
-
-const PLAYER_MONSTER_CHOICES: Record<
-  string,
-  {
-    spriteKey: "mob_keeper19" | "mob_keeper20";
-    idleAnim: string;
-    attackAnim: string;
-    blindAnim: string;
-    speedMultiplier: number;
-    scale: number;
-    eyeOffset: { x: number; y: number };
-  }
-> = {
-  keeper19: {
-    spriteKey: "mob_keeper19",
-    idleAnim: "mob_keeper19_idle",
-    attackAnim: "mob_keeper19_attack",
-    blindAnim: "mob_keeper19_blind",
-    speedMultiplier: 1.15,
-    scale: 0.8,
-    // Local sprite space offset (before rotation), tuned for SV sheet.
-    eyeOffset: { x: 0, y: -34 },
-  },
-  keeper20: {
-    spriteKey: "mob_keeper20",
-    idleAnim: "mob_keeper20_idle",
-    attackAnim: "mob_keeper20_attack",
-    blindAnim: "mob_keeper20_blind",
-    speedMultiplier: 0.9,
-    scale: 0.62,
-    eyeOffset: { x: 6, y: -42 },
-  },
-};
-
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const lerpColor = (from: number, to: number, t: number) => {
-  const fr = (from >> 16) & 0xff;
-  const fg = (from >> 8) & 0xff;
-  const fb = from & 0xff;
-  const tr = (to >> 16) & 0xff;
-  const tg = (to >> 8) & 0xff;
-  const tb = to & 0xff;
-  const r = Math.round(lerp(fr, tr, t));
-  const g = Math.round(lerp(fg, tg, t));
-  const b = Math.round(lerp(fb, tb, t));
-  return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
-};
-
-const formatSectorDisplayName = (raw: string) => {
-  // Server names look like "Green L1 • Aquila-12".
-  // Players want to see only one sector name (the suffix after "•").
-  const parts = raw.split("•");
-  return (parts[parts.length - 1] ?? raw).trim();
-};
-
-const monsterNameColor = (monsterLevel: number, playerLevel: number) => {
-  const green = 0x2ecc71;
-  const red = 0xff5a5a;
-  const white = 0xf1f4fb;
-  const diff = monsterLevel - playerLevel;
-  if (diff === 0) {
-    return lerpColor(green, green, 0);
-  }
-  const t = Math.min(1, Math.abs(diff) / 5);
-  return diff > 0 ? lerpColor(green, red, t) : lerpColor(green, white, t);
-};
+import {
+  MOVE_SPEED,
+  WORLD_WIDTH,
+  WORLD_HEIGHT,
+  REMOTE_INTERPOLATION_DELAY,
+  FURY_SIZE_MULT,
+  SPAWN_IMMUNITY_UNTIL_FIRST_ACTION,
+} from "./PhaserArena/constants";
+import type { PhaserModule, WorldState } from "./PhaserArena/types";
+import { MONSTER_DEFS } from "./PhaserArena/monsterDefs";
+import {
+  formatSectorDisplayName,
+  monsterNameColor,
+} from "./PhaserArena/utils";
+import { ASSETS } from "./PhaserArena/assets";
+import {
+  getShipTexture,
+  getShipScale,
+  getShipIdleAnim,
+  getShipBlindAnim,
+  getShipAttackAnim,
+  getShipSpeedMultiplier,
+  getLevelScale,
+  getLevelSpeedMultiplier,
+  getSkinRotationOffset,
+} from "./PhaserArena/playerHelpers";
+import {
+  setupMobileControls,
+  type MobileControlsState,
+} from "./PhaserArena/mobileControls";
+import { createSpaceArenaAnimations } from "./PhaserArena/animations";
+import {
+  createAudioManager,
+  type AudioManager,
+  type AudioManagerState,
+} from "./PhaserArena/audio";
+import {
+  syncWorld as doSyncWorld,
+  syncGravityPitGraphics,
+  type GravityPitNormalized,
+  type WorldSyncScene,
+} from "./PhaserArena/worldSync";
 
 const createSpaceArenaScene = (
   Phaser: PhaserModule,
@@ -210,9 +71,6 @@ const createSpaceArenaScene = (
     private lastContinuousLaserHitAt = 0;
     /** Prism-style fan of beams (multiple Graphics) */
     private continuousLaserBeams: Phaser.GameObjects.Graphics[] = [];
-    private continuousLaserSound?: HTMLAudioElement;
-    /** Web Audio nodes for synthesized heat-vision sound when .ogg is missing */
-    private continuousLaserSynthetic?: { oscillator: OscillatorNode; gain: GainNode };
     private otherPlayers = new Map<
       number,
       {
@@ -257,11 +115,7 @@ const createSpaceArenaScene = (
     private serverTimeOffset = 0;
     private playerPulse?: Phaser.Tweens.Tween;
     private playerFacing: "n" | "s" | "e" | "w" = "s";
-    private audioContext?: AudioContext;
-    private audioUnlocked = false;
-    private musicTrack?: HTMLAudioElement;
-    /** Unique hard-core tension track when health < 25% (tension_low_health.ogg or .mp3) */
-    private lowHealthMusicTrack?: HTMLAudioElement;
+    private audioManager!: AudioManager;
     private unsubscribeMusicVolume?: () => void;
     private unsubscribeShipChoice?: () => void;
     private health = 100;
@@ -299,7 +153,7 @@ const createSpaceArenaScene = (
     private safeZoneTooltip?: Phaser.GameObjects.Text;
     private lastWorldSafeZone: WorldState["safeZone"] = null;
     private gravityPitContainers = new Map<string, Phaser.GameObjects.Container>();
-    private lastWorldGravityPits: WorldState["gravityPits"] = [];
+    private lastWorldGravityPits: GravityPitNormalized[] = [];
     private lowHealthVignette?: Phaser.GameObjects.Graphics;
     private lastLowHealthShakeAt = 0;
     private lastHeartbeatAt = 0;
@@ -314,20 +168,14 @@ const createSpaceArenaScene = (
     private lastExitCountdownTickAt = 0;
 
     // Mobile controls (virtual joystick + fire button)
-    private mobileControlsEnabled = false;
-    private joystickBase?: Phaser.GameObjects.Arc;
-    private joystickThumb?: Phaser.GameObjects.Arc;
-    private joystickPointerId: number | null = null;
-    private joystickCenterX = 0;
-    private joystickCenterY = 0;
-    private joystickRadius = 54;
-    private joystickX = 0; // [-1..1]
-    private joystickY = 0; // [-1..1]
-    private fireButton?: Phaser.GameObjects.Arc;
-    private firePointerId: number | null = null;
-    private fireHeld = false;
-    private fireJustPressed = false;
-    private readonly fireRepeatMs = 160;
+    private mobileState: MobileControlsState = {
+      enabled: false,
+      joystickX: 0,
+      joystickY: 0,
+      fireHeld: false,
+      fireJustPressed: false,
+      fireRepeatMs: 160,
+    };
     private playerSpeedMultiplier = 1;
     private aimRotation = 0;
     private appliedLevelScale = 1;
@@ -337,245 +185,16 @@ const createSpaceArenaScene = (
     }
 
     preload() {
-      this.load.image(
-        "space_bg",
-        "/assets/kenney/space-shooter/Backgrounds/darkPurple.png"
-      );
-      this.load.image(
-        "ship_player_1",
-        "/assets/kenney/space-shooter-redux/PNG/playerShip1_blue.png"
-      );
-      this.load.image(
-        "ship_player_2",
-        "/assets/kenney/space-shooter-redux/PNG/playerShip2_green.png"
-      );
-      this.load.image(
-        "ship_player_3",
-        "/assets/kenney/space-shooter-redux/PNG/playerShip3_red.png"
-      );
-      this.load.image(
-        "meteor_big",
-        "/assets/kenney/space-shooter/PNG/Meteors/meteorBrown_big1.png"
-      );
-      this.load.image(
-        "meteor_small",
-        "/assets/kenney/space-shooter/PNG/Meteors/meteorBrown_small1.png"
-      );
-      this.load.image(
-        "meteor_grey_big",
-        "/assets/kenney/space-shooter/PNG/Meteors/meteorGrey_big1.png"
-      );
-      this.load.image(
-        "meteor_grey_small",
-        "/assets/kenney/space-shooter/PNG/Meteors/meteorGrey_small1.png"
-      );
-      this.load.image(
-        "pickup_scrap",
-        "/assets/kenney/space-shooter-redux/PNG/Power-ups/bolt_bronze.png"
-      );
-      this.load.image(
-        "pickup_tokens",
-        "/assets/kenney/space-shooter-redux/PNG/Power-ups/star_gold.png"
-      );
-      this.load.image(
-        "laser_blue",
-        "/assets/kenney/space-shooter/PNG/Lasers/laserBlue07.png"
-      );
-      // Keeper-2 SV battlers (192x64 frames, 9xN sheets).
-      this.load.spritesheet(
-        "mob_keeper19",
-        "/assets/mobs/keeper-2/waechter-19/waechter-19/sv_waechter-19.png",
-        { frameWidth: 192, frameHeight: 64 }
-      );
-      this.load.spritesheet(
-        "mob_keeper20",
-        "/assets/mobs/keeper-2/waechter-20/waechter-20/waechter-20 SV_Battler.png",
-        { frameWidth: 192, frameHeight: 128 }
-      );
-      this.load.image(
-        "enemy_blue_1",
-        "/assets/kenney/space-shooter-redux/PNG/Enemies/enemyBlue1.png"
-      );
-      this.load.image(
-        "enemy_red_2",
-        "/assets/kenney/space-shooter-redux/PNG/Enemies/enemyRed2.png"
-      );
-      this.load.image(
-        "enemy_green_3",
-        "/assets/kenney/space-shooter-redux/PNG/Enemies/enemyGreen3.png"
-      );
-      this.load.image(
-        "enemy_black_4",
-        "/assets/kenney/space-shooter-redux/PNG/Enemies/enemyBlack4.png"
-      );
-      this.load.image(
-        "enemy_alt_blue",
-        "/assets/kenney/space-shooter/PNG/Enemies/enemyBlue4.png"
-      );
-      this.load.image(
-        "enemy_alt_red",
-        "/assets/kenney/space-shooter/PNG/Enemies/enemyRed4.png"
-      );
-      this.load.image(
-        "enemy_alt_green",
-        "/assets/kenney/space-shooter/PNG/Enemies/enemyGreen4.png"
-      );
-      this.load.image(
-        "enemy_alt_black",
-        "/assets/kenney/space-shooter/PNG/Enemies/enemyBlack4.png"
-      );
-      this.load.image(
-        "black_hole_1",
-        "/assets/kenney/space-shooter/PNG/Effects/star1.png"
-      );
-      this.load.image(
-        "black_hole_2",
-        "/assets/kenney/space-shooter/PNG/Effects/star2.png"
-      );
-      this.load.image(
-        "black_hole_3",
-        "/assets/kenney/space-shooter/PNG/Effects/star3.png"
-      );
-    }
-
-    private isTouchDevice() {
-      // Phaser device flags are the most reliable inside the game context
-      return (
-        !!this.sys.game.device.input.touch ||
-        !!this.sys.game.device.os.android ||
-        !!this.sys.game.device.os.iOS ||
-        (typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0)
-      );
-    }
-
-    private layoutMobileControls(width: number, height: number) {
-      const pad = 24;
-      const baseR = this.joystickRadius;
-      const fireR = 46;
-
-      this.joystickCenterX = pad + baseR;
-      this.joystickCenterY = height - pad - baseR;
-
-      if (this.joystickBase) {
-        this.joystickBase.setPosition(this.joystickCenterX, this.joystickCenterY);
+      for (const asset of ASSETS) {
+        if (asset.type === "image") {
+          this.load.image(asset.key, asset.url);
+        } else {
+          this.load.spritesheet(asset.key, asset.url, {
+            frameWidth: asset.frameWidth,
+            frameHeight: asset.frameHeight,
+          });
+        }
       }
-      if (this.joystickThumb) {
-        this.joystickThumb.setPosition(this.joystickCenterX, this.joystickCenterY);
-      }
-      if (this.fireButton) {
-        this.fireButton.setPosition(width - pad - fireR, height - pad - fireR);
-      }
-    }
-
-    private setupMobileControls() {
-      this.mobileControlsEnabled = this.isTouchDevice();
-      if (!this.mobileControlsEnabled) {
-        return;
-      }
-
-      // allow multi-touch (move + fire)
-      this.input.addPointer(2);
-
-      // Visuals
-      this.joystickBase = this.add
-        .circle(0, 0, this.joystickRadius, 0x0f141b, 0.55)
-        .setStrokeStyle(2, 0x5a6b7f, 0.65)
-        .setScrollFactor(0)
-        .setDepth(1000);
-      this.joystickThumb = this.add
-        .circle(0, 0, Math.max(18, Math.floor(this.joystickRadius * 0.42)), 0x9fd9ff, 0.75)
-        .setStrokeStyle(2, 0x0f1116, 0.55)
-        .setScrollFactor(0)
-        .setDepth(1001);
-
-      this.fireButton = this.add
-        .circle(0, 0, 46, 0x8ed5ff, 0.2)
-        .setStrokeStyle(2, 0x8ed5ff, 0.7)
-        .setScrollFactor(0)
-        .setDepth(1000);
-
-      this.layoutMobileControls(this.scale.width, this.scale.height);
-
-      this.scale.on("resize", (gameSize: { width: number; height: number }) => {
-        this.layoutMobileControls(gameSize.width, gameSize.height);
-      });
-
-      const inCircle = (px: number, py: number, cx: number, cy: number, r: number) => {
-        const dx = px - cx;
-        const dy = py - cy;
-        return dx * dx + dy * dy <= r * r;
-      };
-
-      const updateJoystick = (pointer: Phaser.Input.Pointer) => {
-        const dx = pointer.x - this.joystickCenterX;
-        const dy = pointer.y - this.joystickCenterY;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 0;
-        const clamp = Math.min(dist, this.joystickRadius);
-        const nx = dist > 0 ? dx / dist : 0;
-        const ny = dist > 0 ? dy / dist : 0;
-        const clampedX = nx * clamp;
-        const clampedY = ny * clamp;
-        this.joystickX = this.joystickRadius > 0 ? clampedX / this.joystickRadius : 0;
-        this.joystickY = this.joystickRadius > 0 ? clampedY / this.joystickRadius : 0;
-        if (this.joystickThumb) {
-          this.joystickThumb.setPosition(
-            this.joystickCenterX + clampedX,
-            this.joystickCenterY + clampedY
-          );
-        }
-      };
-
-      const resetJoystick = () => {
-        this.joystickPointerId = null;
-        this.joystickX = 0;
-        this.joystickY = 0;
-        if (this.joystickThumb) {
-          this.joystickThumb.setPosition(this.joystickCenterX, this.joystickCenterY);
-        }
-      };
-
-      this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-        if (this.isChatInputFocused()) {
-          return;
-        }
-        if (
-          this.joystickPointerId == null &&
-          inCircle(pointer.x, pointer.y, this.joystickCenterX, this.joystickCenterY, this.joystickRadius + 14)
-        ) {
-          this.joystickPointerId = pointer.id;
-          updateJoystick(pointer);
-          return;
-        }
-        if (this.firePointerId == null && this.fireButton) {
-          const fx = this.fireButton.x;
-          const fy = this.fireButton.y;
-          if (inCircle(pointer.x, pointer.y, fx, fy, 58)) {
-            this.firePointerId = pointer.id;
-            this.fireHeld = true;
-            this.fireJustPressed = true;
-          }
-        }
-      });
-
-      this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
-        if (pointer.id === this.joystickPointerId) {
-          updateJoystick(pointer);
-        }
-      });
-
-      const releasePointer = (pointer: Phaser.Input.Pointer) => {
-        if (pointer.id === this.joystickPointerId) {
-          resetJoystick();
-        }
-        if (pointer.id === this.firePointerId) {
-          this.firePointerId = null;
-          this.fireHeld = false;
-          this.fireJustPressed = false;
-        }
-      };
-
-      this.input.on("pointerup", releasePointer);
-      this.input.on("pointerupoutside", releasePointer);
     }
 
     create() {
@@ -632,55 +251,7 @@ const createSpaceArenaScene = (
         .setBackgroundColor("rgba(0,0,0,0.55)")
         .setScrollFactor(0);
 
-      // Define monster animations once.
-      const createKeeperAnim = (
-        sheetKey: "mob_keeper19" | "mob_keeper20",
-        animKey: string,
-        row: number,
-        startCol = 0,
-        frameCount = 3,
-        opts?: { frameRate?: number; repeat?: number }
-      ) => {
-        if (this.anims.exists(animKey)) {
-          return;
-        }
-        const start = row * 9 + startCol;
-        const end = start + Math.max(0, frameCount - 1);
-        this.anims.create({
-          key: animKey,
-          frames: this.anims.generateFrameNumbers(sheetKey, { start, end }),
-          frameRate: opts?.frameRate ?? 6,
-          repeat: opts?.repeat ?? -1,
-        });
-      };
-      // Idle (first 3 frames of row 0)
-      createKeeperAnim("mob_keeper19", "mob_keeper19_idle", 0, 0, 3);
-      createKeeperAnim("mob_keeper20", "mob_keeper20_idle", 0, 0, 3);
-      // Attack (eye-laser frames appear mid-row)
-      // IMPORTANT: attack must NOT loop.
-      createKeeperAnim("mob_keeper19", "mob_keeper19_attack", 0, 3, 3, {
-        frameRate: 10,
-        repeat: 0,
-      });
-      createKeeperAnim("mob_keeper20", "mob_keeper20_attack", 3, 3, 3, {
-        frameRate: 10,
-        repeat: 0,
-      });
-      // "Blind" (use last row of each sheet)
-      createKeeperAnim("mob_keeper19", "mob_keeper19_blind", 5, 0, 3);
-      createKeeperAnim("mob_keeper20", "mob_keeper20_blind", 5, 0, 3);
-      if (!this.anims.exists("blackHolePulse")) {
-        this.anims.create({
-          key: "blackHolePulse",
-          frames: [
-            { key: "black_hole_1" },
-            { key: "black_hole_2" },
-            { key: "black_hole_3" },
-          ],
-          frameRate: 6,
-          repeat: -1,
-        });
-      }
+      createSpaceArenaAnimations(this);
       this.sectorText = this.add
         .text(24, 78, "Сектор: --", {
           fontFamily: "Arial",
@@ -760,25 +331,25 @@ const createSpaceArenaScene = (
       const spawnY = spawnFromServer ? playerState.posY : centerY;
       const spawnRotation = spawnFromServer ? playerState.rotation : 0;
       this.appliedServerPosition = spawnFromServer;
-      const shipTexture = this.getShipTexture(user?.shipChoice);
+      const shipTexture = getShipTexture(user?.shipChoice);
       this.player = this.physics.add
         .sprite(spawnX, spawnY, shipTexture)
         .setScale(
-          this.getShipScale(user?.shipChoice) *
-            this.getLevelScale(useGameStore.getState().player?.level ?? 1)
+          getShipScale(user?.shipChoice) *
+            getLevelScale(useGameStore.getState().player?.level ?? 1)
         )
         .setCollideWorldBounds(true);
       // Spawn immunity: invulnerable until first movement (prevents mobs killing on login).
       this.invulnerableUntil = SPAWN_IMMUNITY_UNTIL_FIRST_ACTION;
       this.playerSpeedMultiplier =
-        this.getShipSpeedMultiplier(user?.shipChoice) *
-        this.getLevelSpeedMultiplier(useGameStore.getState().player?.level ?? 1);
-      this.appliedLevelScale = this.getLevelScale(useGameStore.getState().player?.level ?? 1);
+        getShipSpeedMultiplier(user?.shipChoice) *
+        getLevelSpeedMultiplier(useGameStore.getState().player?.level ?? 1);
+      this.appliedLevelScale = getLevelScale(useGameStore.getState().player?.level ?? 1);
       this.aimRotation = spawnRotation;
       this.player.setRotation(
-        spawnRotation + this.getSkinRotationOffset(user?.shipChoice)
+        spawnRotation + getSkinRotationOffset(user?.shipChoice)
       );
-      this.player.play(this.getShipIdleAnim(user?.shipChoice));
+      this.player.play(getShipIdleAnim(user?.shipChoice));
       this.player.setDamping(true);
       this.player.setDrag(0.92);
       this.player.setMaxVelocity(MOVE_SPEED * this.playerSpeedMultiplier);
@@ -825,24 +396,25 @@ const createSpaceArenaScene = (
       this.remoteLasers = this.physics.add.group();
       this.enemies = this.physics.add.group();
       this.otherPlayersGroup = this.physics.add.group();
-      // Unlock audio on first interaction ANYWHERE (canvas or UI overlay).
-      this.input.once("pointerdown", this.unlockAudio, this);
-      this.input.keyboard?.once("keydown", this.unlockAudio, this);
-      const unlockFromWindow = () => this.unlockAudio();
-      window.addEventListener("pointerdown", unlockFromWindow, { once: true });
-      window.addEventListener("keydown", unlockFromWindow, { once: true });
-      this.events.once("shutdown", this.stopMusic, this);
-      this.events.once("destroy", this.stopMusic, this);
+      this.audioManager = createAudioManager({
+        getState: (): AudioManagerState => useGameStore.getState(),
+        getCurrentSectorLevel: () => this.currentSectorLevel,
+        setCurrentSectorLevel: (level) => {
+          this.currentSectorLevel = level;
+        },
+      });
+      const unlockAudio = () => this.audioManager.unlockAudio();
+      this.input.once("pointerdown", unlockAudio);
+      this.input.keyboard?.once("keydown", unlockAudio);
+      window.addEventListener("pointerdown", unlockAudio, { once: true });
+      window.addEventListener("keydown", unlockAudio, { once: true });
+      this.events.once("shutdown", () => this.audioManager.stopMusic());
+      this.events.once("destroy", () => this.audioManager.stopMusic());
       this.events.once("shutdown", this.clearPresence, this);
       this.events.once("destroy", this.clearPresence, this);
 
-      this.unsubscribeMusicVolume = useGameStore.subscribe((state, prev) => {
-        const prevVolume = prev?.musicVolume;
-        if (state.musicVolume !== prevVolume && this.musicTrack) {
-          const base = Math.max(0, Math.min(1, state.musicVolume ?? 0.45));
-          const factor = state.lowHealthActive ? 0.25 : 1;
-          this.musicTrack.volume = base * factor;
-        }
+      this.unsubscribeMusicVolume = useGameStore.subscribe((state) => {
+        this.audioManager.updateVolumes(state);
       });
       this.unsubscribeShipChoice = useGameStore.subscribe((state, prev) => {
         const prevChoice = prev?.user?.shipChoice;
@@ -870,7 +442,7 @@ const createSpaceArenaScene = (
             | "tokens";
           const pickupId = pickupSprite.getData("id") as number | undefined;
           pickupSprite.destroy();
-          this.playPickupSound();
+          this.audioManager.playPickupSound();
           if (resource === "tokens") {
             if (pickupId != null) {
               this.sendWorldAction("pickup_collect", {
@@ -905,7 +477,7 @@ const createSpaceArenaScene = (
             return;
           }
         }
-        this.playEnemyAttackSound();
+        this.audioManager.playEnemyAttackSound();
         const enemySprite = enemy as Phaser.Physics.Arcade.Sprite;
         const enemyDamage =
           (enemySprite.getData("damage") as number | undefined) ?? 8;
@@ -919,7 +491,7 @@ const createSpaceArenaScene = (
         if (asteroidId != null) {
           this.sendWorldAction("asteroid_destroy", { asteroidId });
         }
-        this.playExplosionSound();
+        this.audioManager.playExplosionSound();
       });
       this.physics.add.overlap(this.lasers, this.enemies, (_laser, enemy) => {
         const laser = _laser as Phaser.Physics.Arcade.Image;
@@ -931,7 +503,7 @@ const createSpaceArenaScene = (
             useGameStore.getState().player?.damage ?? 18;
           this.sendWorldAction("enemy_hit", { enemyId, damage });
         }
-        this.playEnemyHitSound();
+        this.audioManager.playEnemyHitSound();
       });
 
       // PvP: local lasers can hit other players (server validates sector/immunity/damage).
@@ -944,7 +516,7 @@ const createSpaceArenaScene = (
           const damage = useGameStore.getState().player?.damage ?? 12;
           this.sendWorldAction("player_hit", { targetUserId, damage });
         }
-        this.playEnemyHitSound();
+        this.audioManager.playEnemyHitSound();
       });
 
       // Remote lasers (from other players) stop when they hit the local player — no fly-through.
@@ -961,149 +533,10 @@ const createSpaceArenaScene = (
         callbackScope: this,
       });
 
-      this.setupMobileControls();
+      setupMobileControls(this, this.mobileState, () =>
+        this.isChatInputFocused()
+      );
     }
-    private ensureAudioContext() {
-      if (this.audioContext && this.audioContext.state === "closed") {
-        this.audioContext = undefined;
-      }
-      if (!this.audioContext) {
-        const AudioCtx =
-          window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-        this.audioContext = new AudioCtx();
-      }
-      return this.audioContext;
-    }
-
-    private unlockAudio() {
-      const context = this.ensureAudioContext();
-      // Resume MUST be triggered from a user gesture; if it fails we just
-      // keep audio locked until the next gesture.
-      if (context.state === "suspended") {
-        void context
-          .resume()
-          .then(() => {
-            this.audioUnlocked = context.state === "running";
-            this.startMusic();
-          })
-          .catch(() => {
-            this.audioUnlocked = false;
-          });
-        return;
-      }
-      this.audioUnlocked = context.state === "running";
-      this.startMusic();
-    }
-
-    /** Level 1 green sectors: let-the-games-begin; Level 2 yellow: space */
-    private static readonly MUSIC_LEVEL1 = "/assets/music/let-the-games-begin-21858.mp3";
-    private static readonly MUSIC_LEVEL2 = "/assets/music/space-438391.mp3";
-
-    private getMainMusicUrlForLevel(level: number): string {
-      return level >= 2 ? SpaceArenaScene.MUSIC_LEVEL2 : SpaceArenaScene.MUSIC_LEVEL1;
-    }
-
-    private startMusic() {
-      if (this.musicTrack || !this.audioUnlocked) {
-        return;
-      }
-      const context = this.ensureAudioContext();
-      if (context.state !== "running") {
-        return;
-      }
-      const url = this.getMainMusicUrlForLevel(this.currentSectorLevel);
-      this.musicTrack = new Audio(url);
-      this.musicTrack.loop = true;
-      const musicVol = useGameStore.getState().musicVolume ?? 0.45;
-      this.musicTrack.volume = Math.max(0, Math.min(1, musicVol));
-      void this.musicTrack.play().catch(() => {});
-    }
-
-    /** Switch main music to the track for the given sector level (1 = green, 2 = yellow). */
-    private switchMainMusicToSectorLevel(level: number) {
-      if (this.currentSectorLevel === level) return;
-      this.currentSectorLevel = level;
-      if (!this.musicTrack || !this.audioUnlocked) return;
-      const url = this.getMainMusicUrlForLevel(level);
-      const musicVol = useGameStore.getState().musicVolume ?? 0.45;
-      const baseVol = Math.max(0, Math.min(1, musicVol));
-      const lowHealth = useGameStore.getState().lowHealthActive;
-      const vol = lowHealth ? baseVol * 0.25 : baseVol;
-      try {
-        this.musicTrack.pause();
-        this.musicTrack.currentTime = 0;
-      } catch {
-        // ignore
-      }
-      this.musicTrack = undefined;
-      const next = new Audio(url);
-      next.loop = true;
-      next.volume = vol;
-      this.musicTrack = next;
-      void next.play().catch(() => {});
-    }
-
-    private stopMusic() {
-      if (this.musicTrack) {
-        try {
-          this.musicTrack.pause();
-          this.musicTrack.currentTime = 0;
-        } catch {
-          // ignore
-        }
-        this.musicTrack = undefined;
-      }
-      this.stopLowHealthMusic();
-    }
-
-    /** Unique low-health tension track. Tries OGG, then MP3, then SpacyLoop. You add tension_low_health.ogg or .mp3 yourself. */
-    private static readonly LOW_HEALTH_TRACK_OGG = "/assets/music/tension_low_health.ogg";
-    private static readonly LOW_HEALTH_TRACK_MP3 = "/assets/music/tension_low_health.mp3";
-    private static readonly LOW_HEALTH_FALLBACK = "/assets/music/SpacyLoop.ogg";
-
-    /** Start tension track when health < 25%; play when loaded. See public/assets/music/README.md for where to download your own. */
-    private startLowHealthMusic() {
-      if (this.lowHealthMusicTrack || !this.audioUnlocked) return;
-      const musicVol = useGameStore.getState().musicVolume ?? 0.45;
-      const vol = Math.max(0, Math.min(1, musicVol));
-      const tryLoad = (url: string, onError: () => void) => {
-        const audio = new Audio(url);
-        audio.loop = true;
-        audio.volume = vol;
-        const tryPlay = () => {
-          if (this.lowHealthMusicTrack !== audio) return;
-          void audio.play().catch(() => {});
-        };
-        audio.addEventListener("canplaythrough", tryPlay, { once: true });
-        audio.addEventListener("error", onError, { once: true });
-        this.lowHealthMusicTrack = audio;
-        tryPlay();
-      };
-      tryLoad(SpaceArenaScene.LOW_HEALTH_TRACK_OGG, () => {
-        if (this.lowHealthMusicTrack === undefined) return;
-        this.lowHealthMusicTrack = undefined;
-        tryLoad(SpaceArenaScene.LOW_HEALTH_TRACK_MP3, () => {
-          if (this.lowHealthMusicTrack === undefined) return;
-          this.lowHealthMusicTrack = undefined;
-          tryLoad(SpaceArenaScene.LOW_HEALTH_FALLBACK, () => {
-            this.lowHealthMusicTrack = undefined;
-          });
-        });
-      });
-    }
-
-    private stopLowHealthMusic() {
-      if (this.lowHealthMusicTrack) {
-        try {
-          this.lowHealthMusicTrack.pause();
-          this.lowHealthMusicTrack.currentTime = 0;
-        } catch {
-          // ignore
-        }
-        this.lowHealthMusicTrack = undefined;
-      }
-    }
-
     private updateHealthBar() {
       if (!this.healthBar) {
         return;
@@ -1153,191 +586,9 @@ const createSpaceArenaScene = (
       const actualDamage = this.health - newHealth;
       this.health = newHealth;
       this.updateHealthBar();
-      this.playShipHitSound();
+      this.audioManager.playShipHitSound();
       this.cameras.main.shake(120, 0.004);
       void damagePlayerAction(actualDamage);
-    }
-
-    private playLaserSound() {
-      if (!this.audioUnlocked) {
-        return;
-      }
-      const sfxVol = useGameStore.getState().sfxVolume ?? 0.55;
-      const sfx = Math.max(0, Math.min(1, sfxVol));
-      const context = this.ensureAudioContext();
-      const now = context.currentTime;
-      const osc = context.createOscillator();
-      const gain = context.createGain();
-      osc.type = "square";
-      osc.frequency.setValueAtTime(680, now);
-      osc.frequency.exponentialRampToValueAtTime(220, now + 0.08);
-      gain.gain.setValueAtTime(0.05 * sfx, now);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
-      osc.connect(gain);
-      gain.connect(context.destination);
-      osc.start(now);
-      osc.stop(now + 0.12);
-      osc.onended = () => {
-        osc.disconnect();
-        gain.disconnect();
-      };
-    }
-
-    /** Heat-vision style sustained sound when continuous_laser.ogg is not available */
-    private startContinuousLaserSyntheticSound(sfxVol: number) {
-      if (!this.audioUnlocked) {
-        return;
-      }
-      const context = this.ensureAudioContext();
-      const osc = context.createOscillator();
-      const gain = context.createGain();
-      const filter = context.createBiquadFilter();
-      filter.type = "lowpass";
-      filter.frequency.value = 800;
-      filter.Q.value = 0.5;
-      osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(220, context.currentTime);
-      gain.gain.setValueAtTime(0.06 * Math.max(0, Math.min(1, sfxVol)), context.currentTime);
-      osc.connect(filter);
-      filter.connect(gain);
-      gain.connect(context.destination);
-      osc.start(0);
-      this.continuousLaserSynthetic = { oscillator: osc, gain };
-    }
-
-    private playPickupSound() {
-      if (!this.audioUnlocked) {
-        return;
-      }
-      const sfxVol = useGameStore.getState().sfxVolume ?? 0.55;
-      const sfx = Math.max(0, Math.min(1, sfxVol));
-      const context = this.ensureAudioContext();
-      const now = context.currentTime;
-      const osc = context.createOscillator();
-      const gain = context.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(520, now);
-      osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
-      gain.gain.setValueAtTime(0.05 * sfx, now);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
-      osc.connect(gain);
-      gain.connect(context.destination);
-      osc.start(now);
-      osc.stop(now + 0.14);
-      osc.onended = () => {
-        osc.disconnect();
-        gain.disconnect();
-      };
-    }
-
-    private playExplosionSound() {
-      if (!this.audioUnlocked) {
-        return;
-      }
-      const sfxVol = useGameStore.getState().sfxVolume ?? 0.55;
-      const sfx = Math.max(0, Math.min(1, sfxVol));
-      const context = this.ensureAudioContext();
-      const now = context.currentTime;
-      const buffer = context.createBuffer(1, context.sampleRate * 0.25, context.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < data.length; i += 1) {
-        data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
-      }
-      const source = context.createBufferSource();
-      source.buffer = buffer;
-      const filter = context.createBiquadFilter();
-      filter.type = "lowpass";
-      filter.frequency.value = 1200;
-      const gain = context.createGain();
-      gain.gain.setValueAtTime(0.12 * sfx, now);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
-      source.connect(filter);
-      filter.connect(gain);
-      gain.connect(context.destination);
-      source.start(now);
-      source.stop(now + 0.24);
-    }
-
-    private playEnemyHitSound() {
-      // Procedural zap to avoid Phaser WebAudio context edge-cases.
-      if (!this.audioUnlocked) {
-        return;
-      }
-      const sfxVol = useGameStore.getState().sfxVolume ?? 0.55;
-      const sfx = Math.max(0, Math.min(1, sfxVol));
-      const context = this.ensureAudioContext();
-      const now = context.currentTime;
-      const osc = context.createOscillator();
-      const gain = context.createGain();
-      const minGain = 0.0001; // exponentialRampToValueAtTime requires strictly positive values
-      osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(420, now);
-      osc.frequency.exponentialRampToValueAtTime(90, now + 0.12);
-      gain.gain.setValueAtTime(minGain, now);
-      gain.gain.exponentialRampToValueAtTime(Math.max(minGain, 0.06 * sfx), now + 0.01);
-      gain.gain.exponentialRampToValueAtTime(minGain, now + 0.14);
-      osc.connect(gain);
-      gain.connect(context.destination);
-      osc.start(now);
-      osc.stop(now + 0.16);
-      osc.onended = () => {
-        osc.disconnect();
-        gain.disconnect();
-      };
-    }
-
-    private playEnemyAttackSound() {
-      if (!this.audioUnlocked) {
-        return;
-      }
-      const sfxVol = useGameStore.getState().sfxVolume ?? 0.55;
-      const sfx = Math.max(0, Math.min(1, sfxVol));
-      const context = this.ensureAudioContext();
-      const now = context.currentTime;
-      const osc = context.createOscillator();
-      const gain = context.createGain();
-      const minGain = 0.0001; // exponentialRampToValueAtTime requires strictly positive values
-      osc.type = "square";
-      osc.frequency.setValueAtTime(160, now);
-      osc.frequency.exponentialRampToValueAtTime(70, now + 0.18);
-      gain.gain.setValueAtTime(minGain, now);
-      gain.gain.exponentialRampToValueAtTime(Math.max(minGain, 0.04 * sfx), now + 0.01);
-      gain.gain.exponentialRampToValueAtTime(minGain, now + 0.2);
-      osc.connect(gain);
-      gain.connect(context.destination);
-      osc.start(now);
-      osc.stop(now + 0.22);
-      osc.onended = () => {
-        osc.disconnect();
-        gain.disconnect();
-      };
-    }
-
-    /** Level-up: synthesized fanfare only (no main-music clip). */
-    private playLevelUpFanfare() {
-      if (typeof window === "undefined") return;
-      const playSynthesizedFanfare = () => {
-        if (!this.audioUnlocked) return;
-        const sfxVol = useGameStore.getState().sfxVolume ?? 0.55;
-        const sfx = Math.max(0, Math.min(1, sfxVol));
-        const context = this.ensureAudioContext();
-        const now = context.currentTime;
-        const notes = [523.25, 659.25, 783.99, 1046.5];
-        notes.forEach((freq, i) => {
-          const osc = context.createOscillator();
-          const gain = context.createGain();
-          osc.type = "sine";
-          osc.frequency.setValueAtTime(freq, now + i * 0.12);
-          gain.gain.setValueAtTime(0, now + i * 0.12);
-          gain.gain.linearRampToValueAtTime(0.12 * sfx, now + i * 0.12 + 0.02);
-          gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.12 + 0.25);
-          osc.connect(gain);
-          gain.connect(context.destination);
-          osc.start(now + i * 0.12);
-          osc.stop(now + i * 0.12 + 0.26);
-        });
-      };
-      playSynthesizedFanfare();
     }
 
     private playTeleportOutEffect(x: number, y: number) {
@@ -1375,7 +626,7 @@ const createSpaceArenaScene = (
     }
 
     private triggerLevelUpEffects(_celebration: { level: number; previousLevel: number }) {
-      this.playLevelUpFanfare();
+      this.audioManager.playLevelUpFanfare();
       const cx = this.cameras.main.scrollX + this.cameras.main.width / 2;
       const cy = this.cameras.main.scrollY + this.cameras.main.height / 2;
       const colors = [0xffd700, 0xffaa00, 0xff6b00, 0xff4444, 0x44ff88];
@@ -1466,7 +717,7 @@ const createSpaceArenaScene = (
         return;
       }
       const level = Math.max(1, Math.min(2, sector.level));
-      this.switchMainMusicToSectorLevel(level);
+      this.audioManager.switchMainMusicToSectorLevel(level);
       if (this.background) {
         this.background.setSize(sector.width, sector.height);
         this.background.setDisplaySize(sector.width, sector.height);
@@ -1484,122 +735,23 @@ const createSpaceArenaScene = (
       this.currentSectorId = sector.id;
     }
 
-    /** Heartbeat-style lub-dub (two low thumps) for low-health feedback */
-    private playHeartbeatSound() {
-      if (!this.audioUnlocked) return;
-      const sfxVol = useGameStore.getState().sfxVolume ?? 0.55;
-      const vol = Math.max(0, Math.min(1, sfxVol)) * 0.2;
-      const context = this.ensureAudioContext();
-      const now = context.currentTime;
-      const playThump = (t: number) => {
-        const osc = context.createOscillator();
-        const gainNode = context.createGain();
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(55, t);
-        osc.frequency.exponentialRampToValueAtTime(35, t + 0.08);
-        gainNode.gain.setValueAtTime(0, t);
-        gainNode.gain.linearRampToValueAtTime(vol, t + 0.02);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-        osc.connect(gainNode);
-        gainNode.connect(context.destination);
-        osc.start(t);
-        osc.stop(t + 0.14);
-      };
-      playThump(now);
-      playThump(now + 0.15);
-    }
-
-    private playShipHitSound() {
-      if (!this.audioUnlocked) {
-        return;
-      }
-      const sfxVol = useGameStore.getState().sfxVolume ?? 0.55;
-      const sfx = Math.max(0, Math.min(1, sfxVol));
-      const context = this.ensureAudioContext();
-      const now = context.currentTime;
-      const osc = context.createOscillator();
-      const gain = context.createGain();
-      osc.type = "triangle";
-      osc.frequency.setValueAtTime(140, now);
-      osc.frequency.exponentialRampToValueAtTime(55, now + 0.16);
-      gain.gain.setValueAtTime(0.08 * sfx, now);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
-      osc.connect(gain);
-      gain.connect(context.destination);
-      osc.start(now);
-      osc.stop(now + 0.2);
-      osc.onended = () => {
-        osc.disconnect();
-        gain.disconnect();
-      };
-    }
-
-    private getShipChoice(choice: string | null | undefined) {
-      return PLAYER_MONSTER_CHOICES[choice ?? ""] ?? PLAYER_MONSTER_CHOICES.keeper19;
-    }
-
-    private getShipTexture(choice: string | null | undefined) {
-      return this.getShipChoice(choice).spriteKey;
-    }
-
-    private getShipIdleAnim(choice: string | null | undefined) {
-      return this.getShipChoice(choice).idleAnim;
-    }
-
-    private getShipBlindAnim(choice: string | null | undefined) {
-      return this.getShipChoice(choice).blindAnim;
-    }
-
-    private getShipAttackAnim(choice: string | null | undefined) {
-      return this.getShipChoice(choice).attackAnim;
-    }
-
-    private getShipSpeedMultiplier(choice: string | null | undefined) {
-      return this.getShipChoice(choice).speedMultiplier;
-    }
-
-    private getShipScale(choice: string | null | undefined) {
-      return this.getShipChoice(choice).scale;
-    }
-
-    private getLevelScale(level: number) {
-      const safe = Number.isFinite(level) ? Math.max(1, level) : 1;
-      // Grow slowly with level, capped to avoid absurd hitboxes.
-      return Math.min(1.6, 1 + (safe - 1) * 0.03);
-    }
-
-    private getLevelSpeedMultiplier(level: number) {
-      const safe = Number.isFinite(level) ? Math.max(1, level) : 1;
-      return 1 + (safe - 1) * 0.03;
-    }
-
-    private getSkinRotationOffset(choice: string | null | undefined) {
-      return choice === "keeper19" || choice === "keeper20"
-        ? KEEPER_SKIN_ROTATION_OFFSET
-        : 0;
-    }
-
-    private getShipEyeOffset(choice: string | null | undefined) {
-      return this.getShipChoice(choice).eyeOffset;
-    }
-
     private applyPlayerMonsterChoice(choice: string | null | undefined) {
       if (!this.player) {
         return;
       }
-      const texture = this.getShipTexture(choice);
+      const texture = getShipTexture(choice);
       if (this.player.texture.key !== texture) {
         this.player.setTexture(texture);
       }
       const level = useGameStore.getState().player?.level ?? 1;
-      const levelScale = this.getLevelScale(level);
-      this.player.setScale(this.getShipScale(choice) * levelScale);
+      const levelScale = getLevelScale(level);
+      this.player.setScale(getShipScale(choice) * levelScale);
       this.appliedLevelScale = levelScale;
       this.playerSpeedMultiplier =
-        this.getShipSpeedMultiplier(choice) * this.getLevelSpeedMultiplier(level);
+        getShipSpeedMultiplier(choice) * getLevelSpeedMultiplier(level);
       this.player.setMaxVelocity(MOVE_SPEED * this.playerSpeedMultiplier);
-      this.player.play(this.getShipIdleAnim(choice), true);
-      this.player.setRotation(this.aimRotation + this.getSkinRotationOffset(choice));
+      this.player.play(getShipIdleAnim(choice), true);
+      this.player.setRotation(this.aimRotation + getSkinRotationOffset(choice));
       const radius =
         Math.max(this.player.displayWidth, this.player.displayHeight) * 0.35;
       const body = this.player.body as Phaser.Physics.Arcade.Body | null;
@@ -1893,7 +1045,7 @@ const createSpaceArenaScene = (
         );
       }
       this.applySectorInfo(world.sector);
-      this.syncWorld(world);
+      doSyncWorld(Phaser, this as unknown as WorldSyncScene, world);
     }
 
     private sendWorldAction(type: string, payload: Record<string, unknown>) {
@@ -1909,349 +1061,7 @@ const createSpaceArenaScene = (
     }
 
     private syncWorld(world: WorldState) {
-      // Always update safe zone from world so firing check has correct zone even if we return early.
-      const safeZoneFromWorld = world.safeZone ?? null;
-      this.lastWorldSafeZone = safeZoneFromWorld;
-      if (safeZoneFromWorld) {
-        this.safeZoneMovesAt = safeZoneFromWorld.movesAt ?? safeZoneFromWorld.expiresAt ?? 0;
-      } else {
-        this.safeZoneMovesAt = 0;
-      }
-      this.lastWorldGravityPits = (world.gravityPits ?? []).map((p) => ({
-        ...p,
-        ownerUserId: p.ownerUserId != null ? String(p.ownerUserId) : undefined,
-      }));
-      if (!this.pickups || !this.enemies || !this.asteroids) {
-        return;
-      }
-      const seenPickups = new Set<number>();
-      for (const pickup of world.pickups) {
-        seenPickups.add(pickup.id);
-        const existing = this.pickupSprites.get(pickup.id);
-        if (existing) {
-          existing.setPosition(pickup.x, pickup.y);
-          continue;
-        }
-        const texture =
-          pickup.resource === "scrap" ? "pickup_scrap" : "pickup_tokens";
-        const sprite = this.pickups
-          .create(pickup.x, pickup.y, texture)
-          .setData("resource", pickup.resource)
-          .setData("id", pickup.id);
-        sprite.setScale(pickup.resource === "tokens" ? 0.85 : 0.8);
-        sprite.setImmovable(true);
-        this.tweens.add({
-          targets: sprite,
-          y: sprite.y - 8,
-          duration: 1200,
-          yoyo: true,
-          repeat: -1,
-          ease: "Sine.inOut",
-        });
-        this.pickupSprites.set(pickup.id, sprite);
-      }
-      for (const [id, sprite] of this.pickupSprites.entries()) {
-        if (!seenPickups.has(id)) {
-          sprite.destroy();
-          this.pickupSprites.delete(id);
-        }
-      }
-
-      const seenAsteroids = new Set<number>();
-      for (const asteroid of world.asteroids) {
-        seenAsteroids.add(asteroid.id);
-        const existing = this.asteroidSprites.get(asteroid.id);
-        if (existing) {
-          // IMPORTANT: static bodies don't move with setPosition() unless refreshed.
-          existing.setPosition(asteroid.x, asteroid.y);
-          if (existing.scaleX !== asteroid.scale || existing.scaleY !== asteroid.scale) {
-            existing.setScale(asteroid.scale);
-            const radius =
-              Math.max(existing.displayWidth, existing.displayHeight) * 0.35;
-            const body = existing.body as Phaser.Physics.Arcade.Body | null;
-            if (body) {
-              body.setCircle(radius);
-              body.setOffset(
-                existing.displayWidth / 2 - radius,
-                existing.displayHeight / 2 - radius
-              );
-            }
-          }
-          existing.refreshBody();
-          continue;
-        }
-        const sprite = this.asteroids
-          .create(asteroid.x, asteroid.y, asteroid.texture)
-          .setScale(asteroid.scale) as Phaser.Physics.Arcade.Sprite;
-        const radius = Math.max(sprite.displayWidth, sprite.displayHeight) * 0.35;
-        const body = sprite.body as Phaser.Physics.Arcade.Body | null;
-        if (body) {
-          body.setCircle(radius);
-          body.setOffset(
-            sprite.displayWidth / 2 - radius,
-            sprite.displayHeight / 2 - radius
-          );
-        }
-        sprite.setData("id", asteroid.id);
-        sprite.refreshBody();
-        this.asteroidSprites.set(asteroid.id, sprite);
-      }
-      for (const [id, sprite] of this.asteroidSprites.entries()) {
-        if (!seenAsteroids.has(id)) {
-          sprite.destroy();
-          this.asteroidSprites.delete(id);
-        }
-      }
-
-      const seenEnemies = new Set<number>();
-      for (const enemy of world.enemies) {
-        seenEnemies.add(enemy.id);
-        const existing = this.enemySprites.get(enemy.id);
-        if (existing) {
-          existing.setPosition(enemy.x, enemy.y);
-          existing.setRotation(enemy.rotation);
-          existing.setDepth(enemy.y);
-          if (existing.texture.key !== enemy.texture) {
-            existing.setTexture(enemy.texture);
-            const animKey = MONSTER_DEFS[enemy.texture]?.animKey;
-            if (animKey) {
-              existing.play(animKey);
-            } else {
-              existing.anims?.stop();
-            }
-          }
-          existing.setData("level", enemy.level);
-          existing.setData("damage", enemy.damage);
-          existing.setData("health", enemy.health);
-          existing.setData("maxHealth", enemy.maxHealth);
-          this.updateEnemyHealthBar(existing);
-          this.updateEnemyNameText(existing);
-          continue;
-        }
-        const sprite = this.enemies
-          .create(enemy.x, enemy.y, enemy.texture)
-          .setScale(enemy.texture.startsWith("enemy_") ? 0.95 : enemy.texture === "mob_keeper20" ? 0.62 : 0.8) as Phaser.Physics.Arcade.Sprite;
-        sprite.setCollideWorldBounds(true);
-        const radius = Math.max(sprite.displayWidth, sprite.displayHeight) * 0.35;
-        const enemyBody = sprite.body as Phaser.Physics.Arcade.Body;
-        enemyBody.setCircle(radius);
-        enemyBody.setOffset(
-          sprite.displayWidth / 2 - radius,
-          sprite.displayHeight / 2 - radius
-        );
-        sprite.setData("id", enemy.id);
-        sprite.setData("level", enemy.level);
-        sprite.setData("damage", enemy.damage);
-        sprite.setData("health", enemy.health);
-        sprite.setData("maxHealth", enemy.maxHealth);
-        const bar = this.add.graphics();
-        sprite.setData("healthBar", bar);
-        const nameText = this.add.text(sprite.x, sprite.y, "", {
-          fontFamily: "Arial",
-          fontSize: "12px",
-          color: "#ffffff",
-        });
-        nameText.setOrigin(0.5, 1);
-        sprite.setData("nameText", nameText);
-        sprite.setRotation(enemy.rotation);
-        sprite.setDepth(enemy.y);
-        const animKey = MONSTER_DEFS[enemy.texture]?.animKey;
-        if (animKey) {
-          sprite.play(animKey);
-        } else {
-          sprite.anims?.stop();
-        }
-        this.updateEnemyHealthBar(sprite);
-        this.updateEnemyNameText(sprite);
-        this.enemySprites.set(enemy.id, sprite);
-      }
-      for (const [id, sprite] of this.enemySprites.entries()) {
-        if (!seenEnemies.has(id)) {
-          const bar = sprite.getData(
-            "healthBar"
-          ) as Phaser.GameObjects.Graphics | undefined;
-          bar?.destroy();
-          const nameText = sprite.getData(
-            "nameText"
-          ) as Phaser.GameObjects.Text | undefined;
-          nameText?.destroy();
-          sprite.destroy();
-          this.enemySprites.delete(id);
-        }
-      }
-
-      this.lastWorldGravityPits = (world.gravityPits ?? []).map((p) => ({
-        ...p,
-        ownerUserId: p.ownerUserId != null ? String(p.ownerUserId) : undefined,
-      }));
-      this.syncGravityPitGraphics();
-
-      const holes: NonNullable<WorldState["blackHoles"]> = world.blackHoles ?? [];
-      const seenIds = new Set<string>();
-      for (const bh of holes) {
-        seenIds.add(bh.id);
-        let entry = this.blackHoleSprites.get(bh.id);
-        const tintHex =
-          typeof bh.targetColor === "string" &&
-          /^#?[0-9a-fA-F]{6}$/.test(bh.targetColor)
-            ? parseInt(bh.targetColor.replace("#", ""), 16)
-            : null;
-        if (!entry) {
-          const sprite = this.physics.add
-            .sprite(bh.x, bh.y, "black_hole_1")
-            .setDepth(6);
-          sprite.setScale(1.5);
-          sprite.setAlpha(tintHex != null ? 0.9 : 0.75);
-          sprite.play("blackHolePulse");
-          if (tintHex != null) sprite.setTint(tintHex);
-          else sprite.clearTint();
-          sprite.setData("holeData", bh);
-          this.tweens.add({
-            targets: sprite,
-            scale: 1.7,
-            duration: 1000,
-            yoyo: true,
-            repeat: -1,
-            ease: "Sine.inOut",
-          });
-          this.tweens.add({
-            targets: sprite,
-            angle: 360,
-            duration: 4000,
-            repeat: -1,
-            ease: "Linear",
-          });
-          sprite.setInteractive({ useHandCursor: true });
-          sprite.on("pointerover", () => {
-            this.hoveredBlackHoleData = sprite.getData("holeData");
-            this.showBlackHoleTooltip();
-          });
-          sprite.on("pointerout", () => {
-            this.hoveredBlackHoleData = null;
-            this.hideBlackHoleTooltip();
-          });
-          let label: Phaser.GameObjects.Text | undefined;
-          if (bh.targetSectorName) {
-            label = this.add
-              .text(bh.x, bh.y - 78, formatSectorDisplayName(bh.targetSectorName), {
-                fontFamily: "Arial",
-                fontSize: "12px",
-                color: bh.targetColor ?? "#ffffff",
-              })
-              .setOrigin(0.5, 1);
-            label.setShadow(0, 2, "#000000", 4, true, true);
-            label.setDepth(7);
-          }
-          const initialRemaining = Math.max(
-            0,
-            Math.floor((bh.expiresAt - Date.now()) / 1000)
-          );
-          const countdownLabel = this.add
-            .text(bh.x, bh.y - 95, `Закроется: ${initialRemaining} с`, {
-              fontFamily: "Arial",
-              fontSize: "11px",
-              color: "#b0b0b0",
-            })
-            .setOrigin(0.5, 1);
-          countdownLabel.setShadow(0, 1, "#000000", 3, true, true);
-          countdownLabel.setDepth(7);
-          entry = { sprite, label, countdownLabel };
-          this.blackHoleSprites.set(bh.id, entry);
-        } else {
-          entry.sprite.setPosition(bh.x, bh.y);
-          entry.sprite.setData("holeData", bh);
-          if (entry.label) {
-            entry.label.setPosition(bh.x, bh.y - 78);
-          }
-          entry.countdownLabel.setPosition(bh.x, bh.y - 95);
-        }
-      }
-      for (const [id, entry] of this.blackHoleSprites.entries()) {
-        if (!seenIds.has(id)) {
-          entry.sprite.destroy();
-          entry.label?.destroy();
-          entry.countdownLabel.destroy();
-          this.blackHoleSprites.delete(id);
-        }
-      }
-      if (this.blackHoleSprites.size === 0) {
-        this.hoveredBlackHoleData = null;
-        this.hideBlackHoleTooltip();
-      }
-
-      // Immunity zone (safe zone) — lastWorldSafeZone already set at start of syncWorld
-      const zone = this.lastWorldSafeZone;
-      if (zone) {
-        if (!this.safeZoneGraphics || this.safeZoneId !== zone.id) {
-          this.safeZoneGraphics?.destroy();
-          this.safeZoneTitleLabel?.destroy();
-          this.safeZoneLabel?.destroy();
-          this.hideSafeZoneTooltip();
-          this.safeZoneGraphics = this.add.graphics();
-          this.safeZoneId = zone.id;
-          this.safeZoneMovesAt = zone.movesAt ?? zone.expiresAt;
-          const colorHex =
-            typeof zone.color === "string" && /^#?[0-9a-fA-F]{6}$/.test(zone.color)
-              ? parseInt(zone.color.replace("#", ""), 16)
-              : 0x2ecc71;
-          // Ring + subtle fill
-          this.safeZoneGraphics.fillStyle(colorHex, 0.08);
-          this.safeZoneGraphics.fillCircle(zone.x, zone.y, zone.radius);
-          this.safeZoneGraphics.lineStyle(3, colorHex, 0.55);
-          this.safeZoneGraphics.strokeCircle(zone.x, zone.y, zone.radius);
-          this.safeZoneGraphics.setDepth(5);
-          this.safeZoneTitleLabel = this.add
-            .text(zone.x, zone.y - zone.radius - 28, "Безопасная зона", {
-              fontFamily: "Arial",
-              fontSize: "13px",
-              color: zone.color ?? "#2ecc71",
-            })
-            .setOrigin(0.5, 1);
-          this.safeZoneTitleLabel.setShadow(0, 2, "#000000", 4, true, true);
-          this.safeZoneTitleLabel.setDepth(6);
-          const initialRemaining = Math.max(0, Math.floor((zone.expiresAt - Date.now()) / 1000));
-          this.safeZoneLabel = this.add
-            .text(zone.x, zone.y - zone.radius - 10, `${initialRemaining} с`, {
-              fontFamily: "Arial",
-              fontSize: "12px",
-              color: zone.color ?? "#2ecc71",
-            })
-            .setOrigin(0.5, 1);
-          this.safeZoneLabel.setShadow(0, 2, "#000000", 4, true, true);
-          this.safeZoneLabel.setDepth(6);
-          this.safeZoneGraphics.setInteractive({
-            hitArea: new Phaser.Geom.Circle(zone.x, zone.y, zone.radius),
-            hitAreaCallback: Phaser.Geom.Circle.Contains,
-            useHandCursor: true,
-          });
-          this.safeZoneGraphics.on("pointerover", () => this.showSafeZoneTooltip());
-          this.safeZoneGraphics.on("pointerout", () => this.hideSafeZoneTooltip());
-        } else if (this.safeZoneGraphics) {
-          // Update move time from server (when zone will relocate).
-          this.safeZoneMovesAt = zone.movesAt ?? zone.expiresAt;
-          if (this.safeZoneTitleLabel) {
-            this.safeZoneTitleLabel.setPosition(zone.x, zone.y - zone.radius - 28);
-          }
-          if (this.safeZoneLabel) {
-            this.safeZoneLabel.setPosition(zone.x, zone.y - zone.radius - 10);
-          }
-          this.safeZoneGraphics.setInteractive({
-            hitArea: new Phaser.Geom.Circle(zone.x, zone.y, zone.radius),
-            hitAreaCallback: Phaser.Geom.Circle.Contains,
-            useHandCursor: true,
-          });
-        }
-      } else {
-        this.safeZoneGraphics?.destroy();
-        this.safeZoneGraphics = undefined;
-        this.safeZoneTitleLabel?.destroy();
-        this.safeZoneTitleLabel = undefined;
-        this.safeZoneLabel?.destroy();
-        this.safeZoneLabel = undefined;
-        this.hideSafeZoneTooltip();
-        this.safeZoneId = undefined;
-        this.safeZoneMovesAt = 0;
-      }
+      doSyncWorld(Phaser, this as unknown as WorldSyncScene, world);
     }
 
     private queueRemoteSnapshot(entry: {
@@ -2320,20 +1130,20 @@ const createSpaceArenaScene = (
       const existing = this.otherPlayers.get(entry.userId);
       if (!existing) {
         const sprite = this.physics.add
-          .sprite(entry.x, entry.y, this.getShipTexture(entry.shipChoice))
-          .setScale(this.getShipScale(entry.shipChoice))
+          .sprite(entry.x, entry.y, getShipTexture(entry.shipChoice))
+          .setScale(getShipScale(entry.shipChoice))
           .setCollideWorldBounds(true);
         sprite.setDamping(true);
         sprite.setDrag(0.9);
-        sprite.setMaxVelocity(MOVE_SPEED * this.getShipSpeedMultiplier(entry.shipChoice));
+        sprite.setMaxVelocity(MOVE_SPEED * getShipSpeedMultiplier(entry.shipChoice));
         sprite.setDepth(entry.y);
-        sprite.setRotation(entry.rotation + this.getSkinRotationOffset(entry.shipChoice));
+        sprite.setRotation(entry.rotation + getSkinRotationOffset(entry.shipChoice));
         sprite.setData("userId", entry.userId);
         this.otherPlayersGroup?.add(sprite);
         sprite.setAlpha(
           Number(entry.invulnerableUntil ?? 0) > Date.now() ? 0.55 : 1
         );
-        sprite.play(this.getShipIdleAnim(entry.shipChoice));
+        sprite.play(getShipIdleAnim(entry.shipChoice));
         sprite.setData("aimRotation", entry.rotation);
         const nameText = this.add
           .text(entry.x, entry.y - 68, this.formatPilotName(entry.nickname, entry.level), {
@@ -2356,10 +1166,10 @@ const createSpaceArenaScene = (
         existing.nameText.setText(this.formatPilotName(entry.nickname, entry.level));
         existing.nameText.setColor(nameColor);
         existing.huntedExpiresAt = entry.huntedExpiresAt;
-        const expectedTexture = this.getShipTexture(entry.shipChoice);
+        const expectedTexture = getShipTexture(entry.shipChoice);
         if (existing.sprite.texture.key !== expectedTexture) {
           existing.sprite.setTexture(expectedTexture);
-          existing.sprite.play(this.getShipIdleAnim(entry.shipChoice));
+          existing.sprite.play(getShipIdleAnim(entry.shipChoice));
         }
         existing.sprite.setData("shipChoice", entry.shipChoice ?? null);
         existing.sprite.setData("aimRotation", entry.rotation);
@@ -2430,6 +1240,27 @@ const createSpaceArenaScene = (
         this.safeZoneTooltip.destroy();
         this.safeZoneTooltip = undefined;
       }
+    }
+
+    onBlackHolePointerOver(
+      holeData: NonNullable<WorldState["blackHoles"]>[number]
+    ) {
+      this.hoveredBlackHoleData = holeData;
+      this.showBlackHoleTooltip();
+    }
+    onBlackHolePointerOut() {
+      this.hoveredBlackHoleData = null;
+      this.hideBlackHoleTooltip();
+    }
+    onBlackHolesCleared() {
+      this.hoveredBlackHoleData = null;
+      this.hideBlackHoleTooltip();
+    }
+    onShowSafeZoneTooltip() {
+      this.showSafeZoneTooltip();
+    }
+    onHideSafeZoneTooltip() {
+      this.hideSafeZoneTooltip();
     }
 
     private clearPresence() {
@@ -2508,7 +1339,7 @@ const createSpaceArenaScene = (
         this.lowHealthBarPulseTween.remove();
         this.lowHealthBarPulseTween = undefined;
       }
-      this.stopLowHealthMusic();
+      this.audioManager.stopLowHealthMusic();
       useGameStore.getState().setLowHealthActive(false);
       if (this.unsubscribeMusicVolume) {
         this.unsubscribeMusicVolume();
@@ -2644,7 +1475,7 @@ const createSpaceArenaScene = (
             ownerUserId: myUserId != null ? String(myUserId) : undefined,
           };
           this.lastWorldGravityPits = [...(this.lastWorldGravityPits || []), optimisticPit];
-          this.syncGravityPitGraphics();
+          syncGravityPitGraphics(this as unknown as WorldSyncScene);
         }
         store.setPendingServerSkillEffect(null);
       }
@@ -2849,17 +1680,17 @@ const createSpaceArenaScene = (
         this.maxHealth = playerState.maxHealth ?? this.maxHealth;
         const level = playerState.level ?? 1;
         const choice = useGameStore.getState().user?.shipChoice;
-        const desiredLevelScale = this.getLevelScale(level);
+        const desiredLevelScale = getLevelScale(level);
         if (Math.abs(desiredLevelScale - this.appliedLevelScale) > 0.0001) {
           this.appliedLevelScale = desiredLevelScale;
-          this.player.setScale(this.getShipScale(choice) * desiredLevelScale);
+          this.player.setScale(getShipScale(choice) * desiredLevelScale);
           this.playerSpeedMultiplier =
-            this.getShipSpeedMultiplier(choice) *
-            this.getLevelSpeedMultiplier(level);
+            getShipSpeedMultiplier(choice) *
+            getLevelSpeedMultiplier(level);
           this.player.setMaxVelocity(MOVE_SPEED * this.playerSpeedMultiplier);
           // Keep aiming rotation stable; only adjust skin offset.
           this.player.setRotation(
-            this.aimRotation + this.getSkinRotationOffset(choice)
+            this.aimRotation + getSkinRotationOffset(choice)
           );
           const radius =
             Math.max(this.player.displayWidth, this.player.displayHeight) * 0.35;
@@ -2877,7 +1708,7 @@ const createSpaceArenaScene = (
           this.aimRotation = playerState.rotation ?? this.aimRotation;
           this.player.setRotation(
             this.aimRotation +
-              this.getSkinRotationOffset(useGameStore.getState().user?.shipChoice)
+              getSkinRotationOffset(useGameStore.getState().user?.shipChoice)
           );
           this.appliedServerPosition = true;
         }
@@ -2904,7 +1735,7 @@ const createSpaceArenaScene = (
         }
         this.player.setVelocity(0, 0);
         this.player.setVisible(true);
-        this.player.play(this.getShipBlindAnim(useGameStore.getState().user?.shipChoice), true);
+        this.player.play(getShipBlindAnim(useGameStore.getState().user?.shipChoice), true);
         const body = this.player.body as Phaser.Physics.Arcade.Body | null;
         if (body) {
           body.enable = false;
@@ -2918,8 +1749,8 @@ const createSpaceArenaScene = (
       if (this.deathNotified) {
         this.deathNotified = false;
         this.player.setVisible(true);
-        this.player.play(this.getShipIdleAnim(useGameStore.getState().user?.shipChoice), true);
-        this.player.setScale(this.getShipScale(useGameStore.getState().user?.shipChoice));
+        this.player.play(getShipIdleAnim(useGameStore.getState().user?.shipChoice), true);
+        this.player.setScale(getShipScale(useGameStore.getState().user?.shipChoice));
         const body = this.player.body as Phaser.Physics.Arcade.Body | null;
         if (body) {
           body.enable = true;
@@ -2932,8 +1763,9 @@ const createSpaceArenaScene = (
       const down = this.cursors?.down.isDown || this.wasd?.down.isDown;
 
       const joystickActive =
-        this.mobileControlsEnabled &&
-        (Math.abs(this.joystickX) > 0.12 || Math.abs(this.joystickY) > 0.12);
+        this.mobileState.enabled &&
+        (Math.abs(this.mobileState.joystickX) > 0.12 ||
+          Math.abs(this.mobileState.joystickY) > 0.12);
 
       const movementSpeedActive =
         useGameStore.getState().activeSkillEffect?.skillId === "movement_speed_5s" &&
@@ -2985,7 +1817,7 @@ const createSpaceArenaScene = (
         useGameStore.getState().activeSkillEffect?.skillId === "fury_7s" &&
         (useGameStore.getState().activeSkillEffect?.expiresAt ?? 0) > Date.now();
       const choice = useGameStore.getState().user?.shipChoice;
-      const baseScale = this.getShipScale(choice) * this.appliedLevelScale;
+      const baseScale = getShipScale(choice) * this.appliedLevelScale;
       const furyScale = baseScale * (furyActive ? FURY_SIZE_MULT : 1);
       this.player.setScale(furyScale);
       const body = this.player.body as Phaser.Physics.Arcade.Body | null;
@@ -3018,8 +1850,8 @@ const createSpaceArenaScene = (
       let speed = 0;
 
       if (joystickActive) {
-        inputX = this.joystickX;
-        inputY = this.joystickY;
+        inputX = this.mobileState.joystickX;
+        inputY = this.mobileState.joystickY;
         const mag = Math.min(1, Math.sqrt(inputX * inputX + inputY * inputY));
         speed = MOVE_SPEED * this.playerSpeedMultiplier * movementSpeedBoost * gravityPitFactor * lowHealthSpeedBoost * mag;
       } else {
@@ -3041,7 +1873,7 @@ const createSpaceArenaScene = (
         const rotation = vec.angle() + Math.PI / 2;
         this.aimRotation = rotation;
         this.player.setRotation(
-          rotation + this.getSkinRotationOffset(useGameStore.getState().user?.shipChoice)
+          rotation + getSkinRotationOffset(useGameStore.getState().user?.shipChoice)
         );
       } else {
         this.player.setVelocity(0, 0);
@@ -3082,21 +1914,7 @@ const createSpaceArenaScene = (
       if (!isContinuousLaser) {
         this.continuousLaserBeams.forEach((g) => g.destroy());
         this.continuousLaserBeams = [];
-        if (this.continuousLaserSound) {
-          this.continuousLaserSound.pause();
-          this.continuousLaserSound.currentTime = 0;
-          this.continuousLaserSound = undefined;
-        }
-        if (this.continuousLaserSynthetic) {
-          try {
-            this.continuousLaserSynthetic.oscillator.stop();
-            this.continuousLaserSynthetic.oscillator.disconnect();
-            this.continuousLaserSynthetic.gain.disconnect();
-          } catch {
-            // already stopped
-          }
-          this.continuousLaserSynthetic = undefined;
-        }
+        this.audioManager.stopContinuousLaserSound();
       } else {
         const choice = store.user?.shipChoice;
         const tint = choice === "keeper20" ? 0xffa500 : 0xff3b3b;
@@ -3119,18 +1937,11 @@ const createSpaceArenaScene = (
             g.setDepth((this.player?.depth ?? 0) + 1);
             this.continuousLaserBeams.push(g);
           }
-          this.player.play(this.getShipAttackAnim(choice), true);
+          this.player.play(getShipAttackAnim(choice), true);
           if (typeof window !== "undefined") {
             const vol = useGameStore.getState().sfxVolume ?? 0.55;
-            const sfxVol = Math.max(0, Math.min(1, vol * 0.7));
-            const sound = new Audio("/assets/sfx/continuous_laser.ogg");
-            sound.loop = true;
-            sound.volume = sfxVol;
-            sound.play().then(() => {
-              this.continuousLaserSound = sound;
-            }).catch(() => {
-              this.startContinuousLaserSyntheticSound(sfxVol);
-            });
+            const sfxVol = Math.max(0, Math.min(1, vol));
+            this.audioManager.startContinuousLaserSound(sfxVol);
           }
         }
         const flashOffset = new Phaser.Math.Vector2(0, -28);
@@ -3180,7 +1991,7 @@ const createSpaceArenaScene = (
               const enemyId = enemy.getData("id") as number | undefined;
               if (enemyId != null) {
                 this.sendWorldAction("enemy_hit", { enemyId, damage, continuousLaser: true });
-                this.playEnemyHitSound();
+                this.audioManager.playEnemyHitSound();
               }
               return true;
             });
@@ -3190,7 +2001,7 @@ const createSpaceArenaScene = (
               const targetUserId = other.getData("userId") as number | undefined;
               if (targetUserId != null) {
                 this.sendWorldAction("player_hit", { targetUserId, damage, continuousLaser: true });
-                this.playEnemyHitSound();
+                this.audioManager.playEnemyHitSound();
               }
               return true;
             });
@@ -3208,7 +2019,7 @@ const createSpaceArenaScene = (
               const enemyId = enemy.getData("id") as number | undefined;
               if (enemyId != null) {
                 this.sendWorldAction("enemy_hit", { enemyId, damage, continuousLaser: true });
-                this.playEnemyHitSound();
+                this.audioManager.playEnemyHitSound();
               }
               return true;
             });
@@ -3218,7 +2029,7 @@ const createSpaceArenaScene = (
               const targetUserId = other.getData("userId") as number | undefined;
               if (targetUserId != null) {
                 this.sendWorldAction("player_hit", { targetUserId, damage, continuousLaser: true });
-                this.playEnemyHitSound();
+                this.audioManager.playEnemyHitSound();
               }
               return true;
             });
@@ -3226,9 +2037,10 @@ const createSpaceArenaScene = (
         }
       }
       const fireFromMobile =
-        this.mobileControlsEnabled &&
-        (this.fireJustPressed ||
-          (this.fireHeld && now - this.lastFiringAt > this.fireRepeatMs));
+        this.mobileState.enabled &&
+        (this.mobileState.fireJustPressed ||
+          (this.mobileState.fireHeld &&
+            now - this.lastFiringAt > this.mobileState.fireRepeatMs));
 
       const fireFromKeyboard =
         this.spaceKey && Phaser.Input.Keyboard.JustDown(this.spaceKey);
@@ -3239,7 +2051,7 @@ const createSpaceArenaScene = (
         }
         // While immune, you cannot shoot.
         if (this.isInvulnerable()) {
-          this.fireJustPressed = false;
+          this.mobileState.fireJustPressed = false;
           return;
         }
         // In safe zone, you cannot shoot. Recompute at fire time (current position) and also respect store.
@@ -3252,7 +2064,7 @@ const createSpaceArenaScene = (
           inSafeZoneNow ||
           useGameStore.getState().playerInSafeZone
         ) {
-          this.fireJustPressed = false;
+          this.mobileState.fireJustPressed = false;
           return;
         }
         // Regular shots do not consume energy; only skills do.
@@ -3274,8 +2086,8 @@ const createSpaceArenaScene = (
         this.lastFiringAt = Date.now();
         // Play the eye-laser animation briefly, then revert to tentacle idle.
         const choice = useGameStore.getState().user?.shipChoice;
-        const attackKey = this.getShipAttackAnim(choice);
-        const idleKey = this.getShipIdleAnim(choice);
+        const attackKey = getShipAttackAnim(choice);
+        const idleKey = getShipIdleAnim(choice);
         this.player.play(attackKey, true);
         this.player.once(`animationcomplete-${attackKey}`, () => {
           // Only revert if still alive and still on the same form.
@@ -3283,7 +2095,7 @@ const createSpaceArenaScene = (
             return;
           }
           const currentChoice = useGameStore.getState().user?.shipChoice;
-          if (this.health > 0 && this.getShipIdleAnim(currentChoice) === idleKey) {
+          if (this.health > 0 && getShipIdleAnim(currentChoice) === idleKey) {
             this.player.play(idleKey, true);
           }
         });
@@ -3309,8 +2121,8 @@ const createSpaceArenaScene = (
           ease: "Sine.out",
           onComplete: () => flash.destroy(),
         });
-        this.playLaserSound();
-        this.fireJustPressed = false;
+        this.audioManager.playLaserSound();
+        this.mobileState.fireJustPressed = false;
       }
 
       if (this.background) {
@@ -3440,13 +2252,7 @@ const createSpaceArenaScene = (
       const musicVol = useGameStore.getState().musicVolume ?? 0.45;
       const baseVol = Math.max(0, Math.min(1, musicVol));
       const lowHealth = useGameStore.getState().lowHealthActive;
-      if (this.musicTrack) {
-        this.musicTrack.volume = lowHealth ? baseVol * 0.25 : baseVol;
-      }
-      // Low-health track: same volume as main music (music slider)
-      if (this.lowHealthMusicTrack) {
-        this.lowHealthMusicTrack.volume = baseVol;
-      }
+      this.audioManager.updateVolumes(useGameStore.getState());
     }
 
     private updateLowHealthEffects() {
@@ -3459,7 +2265,7 @@ const createSpaceArenaScene = (
       const now = this.time.now;
 
       if (lowHealth) {
-        this.startLowHealthMusic();
+        this.audioManager.startLowHealthMusic();
         if (!this.lowHealthVignette) {
           this.lowHealthVignette = this.add.graphics().setDepth(9999);
         }
@@ -3477,10 +2283,10 @@ const createSpaceArenaScene = (
         }
         if (now - this.lastHeartbeatAt > 900) {
           this.lastHeartbeatAt = now;
-          this.playHeartbeatSound();
+          this.audioManager.playHeartbeatSound();
         }
       } else {
-        this.stopLowHealthMusic();
+        this.audioManager.stopLowHealthMusic();
         if (this.lowHealthVignette) {
           this.lowHealthVignette.setVisible(false);
         }
@@ -3533,7 +2339,7 @@ const createSpaceArenaScene = (
           | null
           | undefined;
         remote.sprite.setRotation(
-          rotation + this.getSkinRotationOffset(remoteChoice)
+          rotation + getSkinRotationOffset(remoteChoice)
         );
         remote.sprite.setData("aimRotation", rotation);
         remote.sprite.setDepth(y);
@@ -3549,62 +2355,6 @@ const createSpaceArenaScene = (
       const safeLevel = level && level > 0 ? level : 1;
       return `${name} Lv.${safeLevel}`;
     }
-    /** Sync gravity pit visuals from lastWorldGravityPits with vortex animation */
-    private syncGravityPitGraphics() {
-      const pits = (this.lastWorldGravityPits ?? []).filter(
-        (p) => p.expiresAt > Date.now()
-      );
-      const seenIds = new Set<string>();
-      for (const pit of pits) {
-        seenIds.add(pit.id);
-        let container = this.gravityPitContainers.get(pit.id);
-        if (!container) {
-          container = this.add.container(pit.x, pit.y);
-          container.setDepth(5.5);
-          const g = this.add.graphics();
-          g.fillStyle(0x2a0a4e, 0.5);
-          g.fillCircle(0, 0, pit.radius);
-          g.lineStyle(3, 0x6b21a8, 0.7);
-          g.strokeCircle(0, 0, pit.radius);
-          g.lineStyle(2, 0x9333ea, 0.5);
-          g.strokeCircle(0, 0, pit.radius * 0.65);
-          g.lineStyle(1, 0xc4b5fd, 0.4);
-          g.strokeCircle(0, 0, pit.radius * 0.3);
-          for (let i = 0; i < 6; i++) {
-            const startAngle = (i / 6) * Math.PI * 2;
-            g.fillStyle(0x5b21b6, 0.25 + (i % 2) * 0.15);
-            g.slice(0, 0, pit.radius * 0.9, startAngle, startAngle + Math.PI / 3);
-            g.fillPath();
-          }
-          container.add(g);
-          this.gravityPitContainers.set(pit.id, container);
-          this.tweens.add({
-            targets: container,
-            angle: 360,
-            duration: 4000,
-            repeat: -1,
-            ease: "Linear",
-          });
-          this.tweens.add({
-            targets: g,
-            alpha: 0.7,
-            duration: 600,
-            yoyo: true,
-            repeat: -1,
-            ease: "Sine.inOut",
-          });
-        } else {
-          container.setPosition(pit.x, pit.y);
-        }
-      }
-      for (const [id, c] of this.gravityPitContainers.entries()) {
-        if (!seenIds.has(id)) {
-          c.destroy();
-          this.gravityPitContainers.delete(id);
-        }
-      }
-    }
-
     private isInsideSafeZone(
       zone: WorldState["safeZone"],
       x: number,
