@@ -281,6 +281,7 @@ export const getOrCreatePlayer = async (
     resources,
     userId,
     lastCollectedAt: null,
+    monsterProgress: {},
   });
   await ensureMonsterProgress(created, shipChoice);
   if (applyRegen) {

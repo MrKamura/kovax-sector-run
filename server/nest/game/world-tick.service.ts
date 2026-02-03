@@ -14,6 +14,7 @@ import { BroadcastService } from "./broadcast.service";
 import { PlayerService } from "./player.service";
 import { normalizeMonsterChoice, getMonsterProgressEntry } from "./utils";
 import { DbService } from "./db.service";
+import type { MonsterProgressEntry } from "../models/player.model";
 
 export interface WorldTickState {
   lastWorldTick: number;
@@ -70,7 +71,7 @@ async function persistHealthForTick(
       {
         health: next,
         lastHealthAt: new Date(),
-        monsterProgress: nextProgress as Record<string, unknown>,
+        monsterProgress: nextProgress as Record<string, MonsterProgressEntry>,
       },
       { where: { userId } }
     );

@@ -6,6 +6,7 @@ import {
 import type { PresenceEntry } from "./types";
 import { DbService } from "./db.service";
 import { BroadcastService } from "./broadcast.service";
+import type { MonsterProgressEntry } from "../models/player.model";
 import {
   clampLevel,
   expToNextLevel,
@@ -130,7 +131,7 @@ export class PlayerService {
           expToNext,
           maxHealth: stats.maxHealth,
           damage: stats.damage,
-          monsterProgress: nextProgress as Record<string, unknown>,
+          monsterProgress: nextProgress as Record<string, MonsterProgressEntry>,
           resources: nextResources,
         },
         { where: { userId } }
@@ -143,7 +144,7 @@ export class PlayerService {
           expToNext,
           maxHealth: stats.maxHealth,
           damage: stats.damage,
-          monsterProgress: nextProgress as Record<string, unknown>,
+          monsterProgress: nextProgress as Record<string, MonsterProgressEntry>,
         },
         { where: { userId } }
       );

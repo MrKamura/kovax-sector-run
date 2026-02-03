@@ -25,6 +25,8 @@ export const POST = async (request: Request) => {
     passwordHash: hashPassword(password),
     nickname: null,
     shipChoice: null,
+    musicVolume: 0.45,
+    sfxVolume: 0.55,
   });
   if (!user.id) {
     return NextResponse.json({ error: "Failed to create user." }, { status: 500 });

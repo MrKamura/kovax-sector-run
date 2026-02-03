@@ -1,7 +1,10 @@
 import { getSequelize } from "./db";
-import { initPlayerModel, Player } from "@/models/player";
-import { initUserModel, User } from "@/models/user";
-import { initSessionModel, Session } from "@/models/session";
+import {
+  initModels as initServerModels,
+  UserModel,
+  SessionModel,
+  PlayerModel,
+} from "../../server/nest/models";
 
 let modelsReady = false;
 
@@ -10,9 +13,7 @@ export const initModels = async () => {
     return;
   }
   const sequelize = getSequelize();
-  initUserModel(sequelize);
-  initPlayerModel(sequelize);
-  initSessionModel(sequelize);
+  initServerModels(sequelize);
   const shouldSync = process.env.DB_SYNC !== "false";
   const shouldAlter = process.env.DB_SYNC_ALTER === "true";
   if (shouldSync) {
@@ -34,4 +35,4 @@ export const initModels = async () => {
   modelsReady = true;
 };
 
-export { Player, User, Session };
+export { PlayerModel as Player, UserModel as User, SessionModel as Session };
