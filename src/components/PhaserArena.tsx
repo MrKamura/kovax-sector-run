@@ -41,6 +41,15 @@ import {
   type GravityPitNormalized,
   type WorldSyncScene,
 } from "./PhaserArena/worldSync";
+import {
+  connectSocket as connectSocketFromModule,
+  handlePresencePayload as handlePresencePayloadFromModule,
+  handleWorldPayload as handleWorldPayloadFromModule,
+  sendWorldAction as sendWorldActionFromModule,
+  type PresenceEntry,
+  type PresencePayloadContext,
+  type WorldPayloadContext,
+} from "./PhaserArena/socketHandlers";
 
 const createSpaceArenaScene = (
   Phaser: PhaserModule,
@@ -765,185 +774,148 @@ const createSpaceArenaScene = (
     }
 
     private connectSocket() {
-      if (!this.socketShouldReconnect || typeof window === "undefined") {
-        return;
-      }
-      // Assume spawn immunity immediately so we're invulnerable before "self" arrives (prevents mobs killing on login).
-      this.invulnerableUntil = SPAWN_IMMUNITY_UNTIL_FIRST_ACTION;
-      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-      const socketUrl = `${protocol}://${window.location.host}/ws`;
-      try {
-        this.socket = new WebSocket(socketUrl);
-      } catch {
-        return;
-      }
-      this.socket.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data as string) as {
-            type: string;
-            serverTime?: number;
-            invulnerableUntil?: number;
-            death?: { lostTokens: number; lostExp: number; killedBy?: string; killedByUserId?: number };
-            vengeance?: {
-              targetUserId: number;
-              targetNickname: string;
-              expiresAt: number;
-              targetSectorId: string | null;
-              targetSectorName: string | null;
-            } | null;
-            hunted?: {
-              hunterUserId: number;
-              hunterNickname: string;
-              expiresAt: number;
-            } | null;
-            players?: Array<{
-              userId: number;
-              nickname: string | null;
-              shipChoice: string | null;
-              x: number;
-              y: number;
-              rotation: number;
-              level?: number;
-              health: number;
-              maxHealth: number;
-              invulnerableUntil?: number;
-              isDead?: boolean;
-              firingAt: number | null;
-              updatedAt: number;
-            }>;
-            world?: WorldState;
-            player?: {
-              level?: number;
-              exp?: number;
-              expToNext?: number;
-              maxHealth?: number;
-              damage?: number;
-              health?: number;
-              resources?: { scrap: number; tokens: number };
-              posX?: number;
-              posY?: number;
-              rotation?: number;
-              lastPositionAt?: string;
-            };
-          };
-          if (payload.type === "presence" && payload.players) {
-            this.handlePresencePayload(payload.players, payload.serverTime);
-          }
-          if (payload.type === "world" && payload.world) {
-            this.handleWorldPayload(payload.world, payload.serverTime);
-          }
-          if (payload.type === "self") {
-            this.invulnerableUntil = Number(payload.invulnerableUntil ?? 0);
-            if (payload.vengeance !== undefined) {
-              useGameStore.getState().setVengeance(payload.vengeance ?? null);
+      connectSocketFromModule(
+        {
+          setSocket: (ws) => {
+            this.socket = ws;
+          },
+          setInvulnerableUntil: (ms) => {
+            this.invulnerableUntil = ms;
+          },
+          handleSocketMessage: (payload) => this.handleSocketMessage(payload),
+          getSocketShouldReconnect: () => this.socketShouldReconnect,
+          scheduleReconnect: (fn) => {
+            if (this.socketReconnectTimer) {
+              this.socketReconnectTimer.remove(false);
             }
-            if (payload.hunted !== undefined) {
-              useGameStore.getState().setHunted(payload.hunted ?? null);
-            }
-            const p = payload as { posX?: number; posY?: number };
-            const posX = typeof p.posX === "number" ? p.posX : undefined;
-            const posY = typeof p.posY === "number" ? p.posY : undefined;
-            if (posX != null && posY != null && this.player) {
-              this.player.setPosition(posX, posY);
-              this.appliedServerPosition = true;
-              useGameStore.getState().applyPlayerUpdate({ posX, posY });
-            }
-          }
-          if (payload.type === "death" && payload.death) {
-            useGameStore.getState().setDeathInfo(payload.death);
-          }
-          if (payload.type === "player_update" && payload.player) {
-            if (payload.player.lastPositionAt) {
-              this.appliedServerPosition = false;
-            }
-            if (typeof payload.player.health === "number") {
-              this.health = payload.player.health;
-            }
-            if (typeof payload.player.maxHealth === "number") {
-              this.maxHealth = payload.player.maxHealth;
-            }
-            useGameStore.getState().applyPlayerUpdate(payload.player);
-            const celebration = useGameStore.getState().levelUpCelebration;
-            if (celebration) {
-              this.triggerLevelUpEffects(celebration);
-            }
-          }
-          if (payload.type === "teleport_complete") {
-            const p = payload as { x?: number; y?: number };
-            const x = Number(p.x);
-            const y = Number(p.y);
-            if (this.player && Number.isFinite(x) && Number.isFinite(y)) {
-              const oldX = this.player.x;
-              const oldY = this.player.y;
-              useGameStore.getState().setActiveSkillEffect(null);
-              this.playTeleportOutEffect(oldX, oldY);
-              this.player.x = x;
-              this.player.y = y;
-              this.playTeleportInEffect(x, y);
-            }
-          }
-          if (payload.type === "exit_ready") {
-            const store = useGameStore.getState();
-            store.clearExitCountdown();
-            this.clearPresence();
-            if (store.exitThenLogout) {
-              store.setExitThenLogout(false);
-              void store.logout();
-            }
-          }
-          if (payload.type === "sector_kill_flash") {
-            const p = payload as { killerName?: string; victimName?: string };
-            const killerName = String(p.killerName ?? "").trim() || "Пилот";
-            const victimName = String(p.victimName ?? "").trim() || "Пилот";
-            useGameStore.getState().setSectorKillFlash({ killerName, victimName });
-            this.time.delayedCall(2000, () => {
-              useGameStore.getState().setSectorKillFlash(null);
-            });
-          }
-          if (payload.type === "player_shot_result") {
-            const p = payload as {
-              attackerUserId?: number;
-              victimUserId?: number;
-              attackerX?: number;
-              attackerY?: number;
-            };
-            const myUserId = useGameStore.getState().user?.id ?? null;
-            const victimUserId = Number(p.victimUserId);
-            const attackerUserId = Number(p.attackerUserId);
-            const attackerX = Number(p.attackerX);
-            const attackerY = Number(p.attackerY);
-            if (
-              myUserId != null &&
-              victimUserId === myUserId &&
-              Number.isFinite(attackerUserId) &&
-              Number.isFinite(attackerX) &&
-              Number.isFinite(attackerY)
-            ) {
-              this.lastCorrectiveShotByAttacker.set(attackerUserId, Date.now());
-              // Remove the wrong laser we spawned from presence (it flies past); we'll show the corrective one
-              const wrongLaser = this.lastRemoteLaserByShooter.get(attackerUserId);
-              if (wrongLaser && Date.now() - wrongLaser.at < 800 && wrongLaser.laser.active) {
-                wrongLaser.laser.destroy();
-              }
-              this.lastRemoteLaserByShooter.delete(attackerUserId);
-              this.spawnCorrectiveLaser(attackerX, attackerY, attackerUserId);
-            }
-          }
-        } catch {
-          // ignore malformed payloads
+            this.socketReconnectTimer = this.time.delayedCall(800, fn);
+          },
+        },
+        {
+          spawnImmunityMs: SPAWN_IMMUNITY_UNTIL_FIRST_ACTION,
+          getSocketUrl: () => {
+            const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+            return `${protocol}://${window.location.host}/ws`;
+          },
         }
+      );
+    }
+
+    private handleSocketMessage(payload: Record<string, unknown>) {
+      const p = payload as {
+        type: string;
+        serverTime?: number;
+        invulnerableUntil?: number;
+        death?: { lostTokens: number; lostExp: number; killedBy?: string; killedByUserId?: number };
+        vengeance?: unknown;
+        hunted?: unknown;
+        players?: PresenceEntry[];
+        world?: WorldState;
+        player?: Record<string, unknown>;
+        posX?: number;
+        posY?: number;
+        x?: number;
+        y?: number;
+        killerName?: string;
+        victimName?: string;
+        attackerUserId?: number;
+        victimUserId?: number;
+        attackerX?: number;
+        attackerY?: number;
       };
-      this.socket.onclose = () => {
-        if (!this.socketShouldReconnect) {
-          return;
+      if (p.type === "presence" && p.players) {
+        handlePresencePayloadFromModule(this as unknown as PresencePayloadContext, p.players, p.serverTime);
+      }
+      if (p.type === "world" && p.world) {
+        handleWorldPayloadFromModule(this as unknown as WorldPayloadContext, p.world, p.serverTime);
+      }
+      if (p.type === "self") {
+        this.invulnerableUntil = Number(p.invulnerableUntil ?? 0);
+        if (payload.vengeance !== undefined) {
+          useGameStore.getState().setVengeance(payload.vengeance as Parameters<ReturnType<typeof useGameStore.getState>["setVengeance"]>[0]);
         }
-        if (this.socketReconnectTimer) {
-          this.socketReconnectTimer.remove(false);
+        if (payload.hunted !== undefined) {
+          useGameStore.getState().setHunted(payload.hunted as Parameters<ReturnType<typeof useGameStore.getState>["setHunted"]>[0]);
         }
-        this.socketReconnectTimer = this.time.delayedCall(800, () => {
-          this.connectSocket();
+        const posX = typeof p.posX === "number" ? p.posX : undefined;
+        const posY = typeof p.posY === "number" ? p.posY : undefined;
+        if (posX != null && posY != null && this.player) {
+          this.player.setPosition(posX, posY);
+          this.appliedServerPosition = true;
+          useGameStore.getState().applyPlayerUpdate({ posX, posY });
+        }
+      }
+      if (p.type === "death" && p.death) {
+        useGameStore.getState().setDeathInfo(p.death);
+      }
+      if (p.type === "player_update" && p.player) {
+        if (p.player.lastPositionAt) {
+          this.appliedServerPosition = false;
+        }
+        if (typeof p.player.health === "number") {
+          this.health = p.player.health;
+        }
+        if (typeof p.player.maxHealth === "number") {
+          this.maxHealth = p.player.maxHealth;
+        }
+        useGameStore.getState().applyPlayerUpdate(p.player);
+        const celebration = useGameStore.getState().levelUpCelebration;
+        if (celebration) {
+          this.triggerLevelUpEffects(celebration);
+        }
+      }
+      if (p.type === "teleport_complete") {
+        const x = Number(p.x);
+        const y = Number(p.y);
+        if (this.player && Number.isFinite(x) && Number.isFinite(y)) {
+          const oldX = this.player.x;
+          const oldY = this.player.y;
+          useGameStore.getState().setActiveSkillEffect(null);
+          this.playTeleportOutEffect(oldX, oldY);
+          this.player.x = x;
+          this.player.y = y;
+          this.playTeleportInEffect(x, y);
+        }
+      }
+      if (p.type === "exit_ready") {
+        const store = useGameStore.getState();
+        store.clearExitCountdown();
+        this.clearPresence();
+        if (store.exitThenLogout) {
+          store.setExitThenLogout(false);
+          void store.logout();
+        }
+      }
+      if (p.type === "sector_kill_flash") {
+        const killerName = String(p.killerName ?? "").trim() || "Пилот";
+        const victimName = String(p.victimName ?? "").trim() || "Пилот";
+        useGameStore.getState().setSectorKillFlash({ killerName, victimName });
+        this.time.delayedCall(2000, () => {
+          useGameStore.getState().setSectorKillFlash(null);
         });
-      };
+      }
+      if (p.type === "player_shot_result") {
+        const myUserId = useGameStore.getState().user?.id ?? null;
+        const victimUserId = Number(p.victimUserId);
+        const attackerUserId = Number(p.attackerUserId);
+        const attackerX = Number(p.attackerX);
+        const attackerY = Number(p.attackerY);
+        if (
+          myUserId != null &&
+          victimUserId === myUserId &&
+          Number.isFinite(attackerUserId) &&
+          Number.isFinite(attackerX) &&
+          Number.isFinite(attackerY)
+        ) {
+          this.lastCorrectiveShotByAttacker.set(attackerUserId, Date.now());
+          const wrongLaser = this.lastRemoteLaserByShooter.get(attackerUserId);
+          if (wrongLaser && Date.now() - wrongLaser.at < 800 && wrongLaser.laser.active) {
+            wrongLaser.laser.destroy();
+          }
+          this.lastRemoteLaserByShooter.delete(attackerUserId);
+          this.spawnCorrectiveLaser(attackerX, attackerY, attackerUserId);
+        }
+      }
     }
 
     private async publishPresence() {
@@ -975,89 +947,29 @@ const createSpaceArenaScene = (
       );
     }
 
-    private handlePresencePayload(
-      players: Array<{
-        userId: number;
-        nickname: string | null;
-        shipChoice: string | null;
-        x: number;
-        y: number;
-        rotation: number;
-        level?: number;
-        health: number;
-        maxHealth: number;
-        invulnerableUntil?: number;
-        isDead?: boolean;
-        firingAt: number | null;
-        updatedAt: number;
-        huntedExpiresAt?: number;
-        isHunted?: boolean;
-      }>,
-      serverTime?: number
-    ) {
-      if (typeof serverTime === "number") {
-        const nextOffset = serverTime - Date.now();
-        this.serverTimeOffset = Phaser.Math.Linear(
-          this.serverTimeOffset,
-          nextOffset,
-          0.1
-        );
-      }
-      const selfId = useGameStore.getState().user?.id;
-      const seen = new Set<number>();
-      for (const entry of players) {
-        if (selfId && entry.userId === selfId) {
-          continue;
-        }
-        if (entry.isDead) {
-          const remote = this.otherPlayers.get(entry.userId);
-          if (remote) {
-            remote.sprite.destroy();
-            remote.nameText.destroy();
-            remote.healthBar.destroy();
-            this.otherPlayers.delete(entry.userId);
-            this.remoteSnapshots.delete(entry.userId);
-          }
-          continue;
-        }
-        seen.add(entry.userId);
-        this.upsertRemotePlayer(entry);
-        this.queueRemoteSnapshot(entry);
-      }
-      for (const [userId, remote] of this.otherPlayers.entries()) {
-        if (!seen.has(userId)) {
-          remote.sprite.destroy();
-          remote.nameText.destroy();
-          remote.healthBar.destroy();
-          this.otherPlayers.delete(userId);
-          this.remoteSnapshots.delete(userId);
-        }
-      }
+    private getServerTimeOffset(): number {
+      return this.serverTimeOffset;
+    }
+    private setServerTimeOffset(offset: number): void {
+      this.serverTimeOffset = offset;
+    }
+    private getSelfId(): number | undefined {
+      return useGameStore.getState().user?.id;
+    }
+    private linear(a: number, b: number, t: number): number {
+      return Phaser.Math.Linear(a, b, t);
+    }
+
+    private handlePresencePayload(players: PresenceEntry[], serverTime?: number) {
+      handlePresencePayloadFromModule(this as unknown as PresencePayloadContext, players, serverTime);
     }
 
     private handleWorldPayload(world: WorldState, serverTime?: number) {
-      if (typeof serverTime === "number") {
-        const nextOffset = serverTime - Date.now();
-        this.serverTimeOffset = Phaser.Math.Linear(
-          this.serverTimeOffset,
-          nextOffset,
-          0.1
-        );
-      }
-      this.applySectorInfo(world.sector);
-      doSyncWorld(Phaser, this as unknown as WorldSyncScene, world);
+      handleWorldPayloadFromModule(this as unknown as WorldPayloadContext, world, serverTime);
     }
 
     private sendWorldAction(type: string, payload: Record<string, unknown>) {
-      if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-        return;
-      }
-      this.socket.send(
-        JSON.stringify({
-          type,
-          ...payload,
-        })
-      );
+      sendWorldActionFromModule(this.socket, type, payload);
     }
 
     private syncWorld(world: WorldState) {
