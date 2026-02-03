@@ -1,5 +1,27 @@
-const MUSIC_LEVEL1 = "/assets/music/let-the-games-begin-21858.mp3";
-const MUSIC_LEVEL2 = "/assets/music/space-438391.mp3";
+/** Музыка по грейду: 1=белый, 2=зелёный, 3=жёлтый, 4=фиолетовый, 5=золотой. */
+const MUSIC_BY_GRADE: Record<number, string> = {
+  1: "/assets/music/let-the-games-begin-21858.mp3",
+  2: "/assets/music/psychronic-fight-for-the-future-336841.mp3",
+  3: "/assets/music/psychronic-wacky-fight-317983.mp3",
+  4: "/assets/music/psychronic-cosmic-starfighter-314414.mp3",
+  5: "/assets/music/inono777-boss-hard-433751.mp3",
+};
+
+/** Нормализация громкости по трекам. */
+const MUSIC_GRADE_GAIN: Record<number, number> = {
+  1: 1,
+  2: 0.9,
+  3: 0.88,
+  4: 0.85,
+  5: 0.82,
+};
+
+function getNormalizedMusicVolume(baseVol: number, grade: number): number {
+  const g = Math.max(1, Math.min(5, grade));
+  const gain = MUSIC_GRADE_GAIN[g] ?? 1;
+  return Math.min(1, Math.max(0, baseVol * gain));
+}
+
 const LOW_HEALTH_TRACK_OGG = "/assets/music/tension_low_health.ogg";
 const LOW_HEALTH_TRACK_MP3 = "/assets/music/tension_low_health.mp3";
 const LOW_HEALTH_FALLBACK = "/assets/music/SpacyLoop.ogg";
@@ -16,8 +38,9 @@ export type AudioManagerOptions = {
   setCurrentSectorLevel: (level: number) => void;
 };
 
-function getMainMusicUrlForLevel(level: number): string {
-  return level >= 2 ? MUSIC_LEVEL2 : MUSIC_LEVEL1;
+function getMainMusicUrlForGrade(grade: number): string {
+  const g = Math.max(1, Math.min(5, grade));
+  return MUSIC_BY_GRADE[g] ?? MUSIC_BY_GRADE[1];
 }
 
 export type AudioManager = {
@@ -96,11 +119,13 @@ export function createAudioManager(
     try {
       const context = ensureAudioContext();
       if (context.state !== "running") return;
-      const url = getMainMusicUrlForLevel(getCurrentSectorLevel());
+      const raw = getCurrentSectorLevel();
+      const grade = Number.isFinite(raw) && raw >= 1 && raw <= 5 ? raw : 1;
+      const url = getMainMusicUrlForGrade(grade);
       const track = new Audio(url);
       track.loop = true;
       const musicVol = getState().musicVolume ?? 0.45;
-      track.volume = Math.max(0, Math.min(1, musicVol));
+      track.volume = getNormalizedMusicVolume(musicVol, grade);
       void track.play().catch(() => {});
       musicTrack = track;
     } catch {
@@ -108,15 +133,21 @@ export function createAudioManager(
     }
   }
 
-  function switchMainMusicToSectorLevel(level: number): void {
-    if (getCurrentSectorLevel() === level) return;
-    setCurrentSectorLevel(level);
-    if (!musicTrack || !audioUnlocked) return;
-    const url = getMainMusicUrlForLevel(level);
+  function switchMainMusicToSectorLevel(grade: number): void {
+    const safeGrade = Math.max(1, Math.min(5, Number(grade) || 1));
+    const current = getCurrentSectorLevel();
+    if (current === safeGrade && musicTrack) return;
+    setCurrentSectorLevel(safeGrade);
+    if (!audioUnlocked) return;
+    if (!musicTrack) {
+      startMusic();
+      return;
+    }
+    const url = getMainMusicUrlForGrade(safeGrade);
     const musicVol = getState().musicVolume ?? 0.45;
     const baseVol = Math.max(0, Math.min(1, musicVol));
     const lowHealth = getState().lowHealthActive;
-    const vol = lowHealth ? baseVol * 0.25 : baseVol;
+    const vol = getNormalizedMusicVolume(lowHealth ? baseVol * 0.25 : baseVol, safeGrade);
     try {
       musicTrack.pause();
       musicTrack.currentTime = 0;
@@ -189,7 +220,8 @@ export function createAudioManager(
   function updateVolumes(state: AudioManagerState): void {
     const base = Math.max(0, Math.min(1, state.musicVolume ?? 0.45));
     const factor = state.lowHealthActive ? 0.25 : 1;
-    if (musicTrack) musicTrack.volume = base * factor;
+    const grade = getCurrentSectorLevel();
+    if (musicTrack) musicTrack.volume = getNormalizedMusicVolume(base * factor, grade);
     if (lowHealthMusicTrack) lowHealthMusicTrack.volume = base;
   }
 

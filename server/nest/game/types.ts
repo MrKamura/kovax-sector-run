@@ -39,6 +39,8 @@ export interface SectorConfig {
   enemyMaxLevel: number;
   enemyTextures: string[];
   asteroidTextures: { big: string[]; small: string[] };
+  pvpAllowed: boolean;
+  blackHoleSpawnWeight: number;
 }
 
 export interface SectorWorld {
@@ -90,6 +92,11 @@ export interface BlackHoleState {
   targetSectorName: string;
   targetLevel: number;
   targetColor: string;
+  targetTitle?: string;
+  /** Вероятность появления этого титула (грейда) в %, 0–100. */
+  targetGradeProbabilityPercent?: number;
+  /** Минимальный уровень игрока для входа в сектор назначения. */
+  targetRequiredPlayerLevel?: number;
   appearsAt?: number;
   expiresAt: number;
 }
@@ -114,7 +121,10 @@ export interface GravityPitState {
 
 export interface Sector {
   id: string;
+  /** Тир сектора (1–5). */
   level: number;
+  /** Грейд/цвет (1=белый, 2=зелёный, 3=жёлтый, 4=фиолетовый, 5=золотой). */
+  grade: number;
   name: string;
   config: SectorConfig;
   world: SectorWorld;

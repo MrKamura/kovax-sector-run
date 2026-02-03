@@ -29,6 +29,7 @@ import {
   ENEMY_RESPAWN_MS,
   PICKUP_RESPAWN_MS,
   EXIT_GRACE_MS,
+  MIN_PLAYER_LEVEL_FOR_SECTOR_LEVEL,
 } from "../config/constants";
 import type { Sector } from "./types";
 
@@ -424,9 +425,9 @@ export class MessageHandlerService {
     const targetSectorId = hole.targetSectorId;
     const targetLevel = Number(hole.targetLevel);
     if (targetSectorId === entry.sectorId) return;
-    if (targetSectorId && Number.isFinite(targetLevel)) {
-      if (sector.level === 1 && targetLevel === 2 && (entry.level || 1) < 3) return;
-    }
+    const requiredLevel = MIN_PLAYER_LEVEL_FOR_SECTOR_LEVEL[targetLevel] ?? 1;
+    const playerLevel = entry.level ?? 1;
+    if (playerLevel < requiredLevel) return;
     const holeId = hole.id;
     sector.world.blackHoles = sector.world.blackHoles.filter((h: { id: string }) => h.id !== holeId);
     services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);

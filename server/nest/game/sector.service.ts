@@ -1,13 +1,16 @@
 import { Injectable } from "@nestjs/common";
 import {
   SECTOR_CONFIGS,
+  BLACK_HOLE_GRADE_WEIGHTS,
+  BLACK_HOLE_SAME_LEVEL_WEIGHT,
+  MIN_PLAYER_LEVEL_FOR_SECTOR_LEVEL,
+  SECTOR_CAPACITY,
   SAFE_ZONE_RADIUS,
   SAFE_ZONE_DURATION_MS,
   SAFE_ZONE_COOLDOWN_MS,
   MAX_BLACK_HOLES_PER_SECTOR,
   BLACK_HOLE_DURATION_MS,
   BLACK_HOLE_APPEAR_DELAY_MS,
-  SECTOR_CAPACITY,
   ENEMY_TYPE_LEVEL,
   WORLD_BASE_WIDTH,
   WORLD_BASE_HEIGHT,
@@ -17,12 +20,12 @@ import {
 } from "../config/constants";
 import type { Sector, SectorWorld, BlackHoleState, SafeZoneState } from "./types";
 import { PresenceService } from "./presence.service";
+import { DbService } from "./db.service";
 import {
   worldSeed,
   rand,
   randBetween,
   randInt,
-  generateSectorName,
   enemyStatsForLevel,
 } from "./utils";
 
@@ -30,11 +33,63 @@ import {
 export class SectorService {
   readonly sectors = new Map<string, Sector>();
 
-  constructor(private readonly presence: PresenceService) {
-    this.createSector(1);
-    this.createSector(1);
-    this.createSector(2);
-    this.createSector(2);
+  constructor(
+    private readonly presence: PresenceService,
+    private readonly db: DbService,
+  ) {}
+
+  /** Загружает все секторы из БД. Никакой генерации — только чтение. Список 25 секторов задаётся миграцией. */
+  async loadSectorsFromDb(db?: DbService): Promise<void> {
+    const dbService = db ?? this.db;
+    if (!dbService?.Sector) {
+      throw new Error("DbService (with Sector model) is required for loadSectorsFromDb.");
+    }
+    const rows = await dbService.Sector.findAll({ order: [["id", "ASC"]] });
+    for (const row of rows) {
+      this.instantiateSector(row.id, row.name, row.level);
+    }
+  }
+
+  /** Название титула (грейда) для описания. */
+  private static getGradeTitle(grade: number): string {
+    const titles: Record<number, string> = {
+      1: "Белый",
+      2: "Зелёный",
+      3: "Жёлтый",
+      4: "Фиолетовый",
+      5: "Золотой",
+    };
+    return titles[Math.max(1, Math.min(5, grade))] ?? "Сектор";
+  }
+
+  /** Грейд из id: Lx-01 -> 1, Lx-02 -> 2, ... (1=белый, 5=золотой). */
+  private static gradeFromId(id: string): number {
+    const match = id.match(/-0?(\d)$/);
+    const g = match ? parseInt(match[1], 10) : 1;
+    return Math.max(1, Math.min(5, g));
+  }
+
+  private instantiateSector(id: string, name: string, level: unknown): void {
+    const safeLevel = SectorService.normalizeSectorLevel(level);
+    const grade = SectorService.gradeFromId(id);
+    const configByGrade = SECTOR_CONFIGS[grade];
+    if (!configByGrade) return;
+    const config = {
+      ...configByGrade,
+      enemyMinLevel: grade === 1 ? 1 : (grade - 1) * 5,
+      enemyMaxLevel: grade * 5,
+    };
+    const sector: Sector = {
+      id,
+      level: safeLevel,
+      grade,
+      name,
+      config: { ...config },
+      world: this.createWorld(),
+      createdAt: Date.now(),
+    };
+    this.ensureWorldPopulation(sector);
+    this.sectors.set(id, sector);
   }
 
   private createWorld(): SectorWorld {
@@ -103,13 +158,16 @@ export class SectorService {
   private spawnEnemy(sector: Sector): void {
     const id = sector.world.nextEnemyId++;
     const { width, height, enemyMinLevel, enemyMaxLevel, enemyTextures } = sector.config;
+    const minLvl = Math.max(1, enemyMinLevel ?? 1);
+    const maxLvl = Math.min(100, enemyMaxLevel ?? 5);
     const { x, y } = this.randomPositionInSector(width, height, 160);
     const texture =
       enemyTextures?.length > 0
         ? enemyTextures[randInt(0, enemyTextures.length - 1)]
         : "enemy_blue_1";
     const fixedLevel = ENEMY_TYPE_LEVEL[texture];
-    const level = fixedLevel ?? randInt(enemyMinLevel, enemyMaxLevel);
+    const rawLevel = fixedLevel ?? randInt(minLvl, maxLvl);
+    const level = Math.max(minLvl, Math.min(maxLvl, rawLevel));
     const stats = enemyStatsForLevel(level);
     sector.world.enemies.set(id, {
       id,
@@ -168,12 +226,80 @@ export class SectorService {
     for (let i = 0; i < neededAsteroids; i++) this.spawnAsteroid(sector);
   }
 
+  private static normalizeSectorLevel(level: unknown): number {
+    const n = Number(level);
+    if (!Number.isFinite(n)) return 1;
+    return Math.max(1, Math.min(5, Math.floor(n)));
+  }
+
+  /** Цели портала: тот же уровень (другие грейды) + соседние уровни (все грейды). Соседние уровни взвешены по грейду из BLACK_HOLE_GRADE_WEIGHTS. */
+  private getTargetLevelGradePairs(current: Sector): { level: number; grade: number; weight: number }[] {
+    const L = SectorService.normalizeSectorLevel(current.level);
+    const G = Math.max(1, Math.min(5, current.grade ?? SectorService.gradeFromId(current.id)));
+    const out: { level: number; grade: number; weight: number }[] = [];
+    const sameWeight = BLACK_HOLE_SAME_LEVEL_WEIGHT;
+    const gradeWeight = (g: number) => BLACK_HOLE_GRADE_WEIGHTS[g] ?? 1 / Math.max(1, g);
+    for (let g = 1; g <= 5; g++) {
+      if (g !== G) out.push({ level: L, grade: g, weight: sameWeight });
+    }
+    if (L < 5) {
+      for (let g = 1; g <= 5; g++) {
+        out.push({ level: L + 1, grade: g, weight: gradeWeight(g) });
+      }
+    }
+    if (L > 1) {
+      for (let g = 1; g <= 5; g++) {
+        out.push({ level: L - 1, grade: g, weight: gradeWeight(g) });
+      }
+    }
+    return out;
+  }
+
+  /** Вероятность выбора пары (level, grade) в процентах (0–100). */
+  private getTargetProbabilityPercent(
+    pairs: { level: number; grade: number; weight: number }[],
+    targetLevel: number,
+    targetGrade: number
+  ): number {
+    const total = pairs.reduce((a, p) => a + p.weight, 0);
+    if (total <= 0) return 0;
+    const p = pairs.find((x) => x.level === targetLevel && x.grade === targetGrade);
+    if (!p) return 0;
+    return Math.round((p.weight / total) * 100);
+  }
+
+  private pickTargetLevelGrade(
+    pairs: { level: number; grade: number; weight: number }[]
+  ): { level: number; grade: number } | null {
+    if (pairs.length === 0) return null;
+    const total = pairs.reduce((a, p) => a + p.weight, 0);
+    let r = Math.random() * total;
+    for (const p of pairs) {
+      r -= p.weight;
+      if (r <= 0) return { level: p.level, grade: p.grade };
+    }
+    const last = pairs[pairs.length - 1];
+    return { level: last.level, grade: last.grade };
+  }
+
+  private getSectorByLevelAndGrade(level: number, grade: number): Sector | null {
+    const safeLevel = SectorService.normalizeSectorLevel(level);
+    const safeGrade = Math.max(1, Math.min(5, grade));
+    for (const s of this.sectors.values()) {
+      if (s.level === safeLevel && (s.grade ?? SectorService.gradeFromId(s.id)) === safeGrade) {
+        return s;
+      }
+    }
+    return null;
+  }
+
   private createBlackHole(sector: Sector): void {
     if (!Array.isArray(sector.world.blackHoles)) sector.world.blackHoles = [];
     if (sector.world.blackHoles.length >= MAX_BLACK_HOLES_PER_SECTOR) return;
-    // Use Math.random() so ~50% of portals lead to yellow (level 2), not biased by seeded RNG
-    const greenOrYellow = Math.random() < 0.5 ? 1 : 2;
-    const targetSector = this.pickRandomSector(greenOrYellow, sector.id);
+    const pairs = this.getTargetLevelGradePairs(sector);
+    const target = this.pickTargetLevelGrade(pairs);
+    if (!target) return;
+    const targetSector = this.getSectorByLevelAndGrade(target.level, target.grade);
     if (!targetSector || targetSector.id === sector.id) return;
     const { x, y } = this.randomPositionInSector(
       sector.config.width,
@@ -184,11 +310,16 @@ export class SectorService {
     const durationMs = BLACK_HOLE_DURATION_MS * (0.5 + rand());
     const now = Date.now();
     const appearsAt = now + appearDelayMs;
-    const namePrefix = targetSector.config?.namePrefix ?? "Sector";
-    const targetName =
-      targetSector.name && String(targetSector.name).trim()
-        ? targetSector.name
-        : `${namePrefix} L${targetSector.level} • ?-${randInt(1, 99)}`;
+    const targetName = this.getSectorDisplayName(targetSector);
+    const targetGrade = targetSector.grade ?? SectorService.gradeFromId(targetSector.id);
+    const targetGradeProbabilityPercent = this.getTargetProbabilityPercent(
+      pairs,
+      target.level,
+      target.grade
+    );
+    const sectorLevel = Math.max(1, Math.min(5, targetSector.level));
+    const targetRequiredPlayerLevel =
+      MIN_PLAYER_LEVEL_FOR_SECTOR_LEVEL[sectorLevel] ?? 1;
     const hole: BlackHoleState = {
       id: `bh-${now}-${randInt(100, 999)}`,
       x,
@@ -196,8 +327,11 @@ export class SectorService {
       type: "warp",
       targetSectorId: targetSector.id,
       targetSectorName: targetName,
-      targetLevel: Math.max(1, Math.min(2, targetSector.level)),
-      targetColor: targetSector.config?.color ?? "#2ecc71",
+      targetLevel: sectorLevel,
+      targetColor: targetSector.config?.color ?? "#ffffff",
+      targetTitle: SectorService.getGradeTitle(targetGrade),
+      targetGradeProbabilityPercent,
+      targetRequiredPlayerLevel,
       appearsAt,
       expiresAt: appearsAt + durationMs,
     };
@@ -208,9 +342,11 @@ export class SectorService {
     if (!Array.isArray(sector.world.blackHoles)) sector.world.blackHoles = [];
     const now = Date.now();
     sector.world.blackHoles = sector.world.blackHoles.filter((h) => h.expiresAt > now);
-    if (sector.world.blackHoles.length < MAX_BLACK_HOLES_PER_SECTOR) {
-      this.createBlackHole(sector);
-    }
+    const weight = sector.config?.blackHoleSpawnWeight ?? 0.5;
+    if (weight <= 0) return;
+    if (sector.world.blackHoles.length >= MAX_BLACK_HOLES_PER_SECTOR) return;
+    if (Math.random() > weight) return;
+    this.createBlackHole(sector);
   }
 
   private ensureSafeZone(sector: Sector): boolean {
@@ -261,36 +397,45 @@ export class SectorService {
     return Array.from(this.sectors.values()).filter((s) => s.level === level);
   }
 
-  pickRandomSector(level: number, excludeId?: string): Sector {
-    const candidates = this.getSectorsByLevel(level).filter(
+  /** Returns a random sector of the given level (excluding excludeId). Only existing sectors — never creates new. */
+  pickRandomSector(level: number, excludeId?: string): Sector | null {
+    const safeLevel = SectorService.normalizeSectorLevel(level);
+    const candidates = this.getSectorsByLevel(safeLevel).filter(
       (s) => !excludeId || s.id !== excludeId
     );
-    if (candidates.length === 0) return this.createSector(level);
+    if (candidates.length === 0) return null;
     return candidates[randInt(0, candidates.length - 1)];
   }
 
-  createSector(level: number): Sector {
-    const safeLevel = Math.max(1, Math.min(2, level));
-    const config = SECTOR_CONFIGS[safeLevel];
-    if (!config) throw new Error(`Unknown sector level: ${level}`);
-    const sectorId = `L${safeLevel}-${Date.now()}-${randInt(100, 999)}`;
-    const rawName = generateSectorName(safeLevel);
-    const sector: Sector = {
-      id: sectorId,
-      level: safeLevel,
-      name: (rawName && String(rawName).trim()) ? rawName : `${config.namePrefix} L${safeLevel} • ?-${randInt(1, 99)}`,
-      config: { ...config },
-      world: this.createWorld(),
-      createdAt: Date.now(),
-    };
-    this.ensureWorldPopulation(sector);
-    this.sectors.set(sectorId, sector);
-    return sector;
+  /** Returns a display name that is never undefined or "undefined*". Always use for snapshot/response. */
+  private getSectorDisplayName(sector: Sector): string {
+    const raw = sector.name != null ? String(sector.name).trim() : "";
+    const valid =
+      raw.length > 0 &&
+      raw !== "undefined" &&
+      raw !== "null" &&
+      !/^\s*undefined(\s|$|-)/i.test(raw) &&
+      !/^\s*null(\s|$|-)/i.test(raw);
+    if (valid) return raw;
+    const prefix = sector.config?.namePrefix ?? "Sector";
+    return `${prefix} L${sector.level} • ?-${randInt(1, 99)}`;
   }
 
+  /** Возвращает сектор уровня. Только из уже загруженных из БД — без генерации. */
+  createSector(level: number): Sector {
+    const safeLevel = SectorService.normalizeSectorLevel(level);
+    const candidates = this.getSectorsByLevel(safeLevel);
+    if (candidates.length === 0) {
+      throw new Error(`No sector for level ${level} in DB. Run migrations to seed 25 sectors.`);
+    }
+    return candidates[randInt(0, candidates.length - 1)];
+  }
+
+  /** Выбор сектора по уровню и загрузке. Только секторы из БД, без генерации. */
   findOrCreateSector(level: number, excludeId?: string, presence?: PresenceService): Sector {
     const presenceService = presence ?? this.presence;
-    const candidates = this.getSectorsByLevel(level).filter((s) => s.id !== excludeId);
+    const safeLevel = SectorService.normalizeSectorLevel(level);
+    const candidates = this.getSectorsByLevel(safeLevel).filter((s) => s.id !== excludeId);
     let best: Sector | null = null;
     let bestCount = Infinity;
     for (const sector of candidates) {
@@ -300,7 +445,11 @@ export class SectorService {
         bestCount = count;
       }
     }
-    return best ?? this.createSector(level);
+    if (best) return best;
+    if (candidates.length > 0) return candidates[0];
+    const anyOfLevel = this.getSectorsByLevel(safeLevel)[0];
+    if (anyOfLevel) return anyOfLevel;
+    throw new Error(`No sector for level ${safeLevel} in DB. Run migrations to seed 25 sectors.`);
   }
 
   isInsideSafeZone(zone: { x: number; y: number; radius: number } | null, x: number, y: number): boolean {
@@ -338,30 +487,57 @@ export class SectorService {
           movesAt: sector.world.lastSafeZoneMoveAt + SAFE_ZONE_COOLDOWN_MS,
         }
       : null;
-    const sectorName =
-      sector.name && String(sector.name).trim()
-        ? sector.name
-        : `${sector.config?.namePrefix ?? "Sector"} L${sector.level}`;
+    const sectorName = this.getSectorDisplayName(sector);
+    const sectorGrade = sector.grade ?? SectorService.gradeFromId(sector.id);
+    const sectorTitle = SectorService.getGradeTitle(sectorGrade);
     return {
       seed: sector.world.seed,
       sector: {
         id: sector.id,
         name: sectorName,
-        level: Math.max(1, Math.min(2, sector.level)),
-        color: sector.config?.color ?? "#2ecc71",
+        title: sectorTitle,
+        level: Math.max(1, Math.min(5, sector.level)),
+        grade: Math.max(1, Math.min(5, sectorGrade)),
+        color: sector.config?.color ?? "#ffffff",
         width: sector.config.width,
         height: sector.config.height,
+        pvpAllowed: sector.config?.pvpAllowed ?? false,
       },
       blackHoles: (sector.world.blackHoles || [])
         .filter((h) => (h.appearsAt ?? 0) <= now && h.expiresAt > now)
-        .map((h) => ({
-          ...h,
-          targetSectorName:
-            h.targetSectorName && String(h.targetSectorName).trim()
-              ? h.targetSectorName
-              : `Sector L${Math.max(1, Math.min(2, h.targetLevel ?? 1))}`,
-          targetLevel: Math.max(1, Math.min(2, h.targetLevel ?? 1)),
-        })),
+        .map((h) => {
+          let targetName =
+            h.targetSectorName != null && String(h.targetSectorName).trim()
+              ? String(h.targetSectorName).trim()
+              : "";
+          if (
+            !targetName ||
+            targetName === "undefined" ||
+            targetName === "null" ||
+            /^\s*undefined(\s|$|-)/i.test(targetName) ||
+            /^\s*null(\s|$|-)/i.test(targetName)
+          ) {
+            const lvl = Math.max(1, Math.min(5, h.targetLevel ?? 1));
+            const targetSector = this.sectors.get(h.targetSectorId);
+            targetName = targetSector
+              ? this.getSectorDisplayName(targetSector)
+              : `Sector L${lvl}`;
+          }
+          const targetSector = this.sectors.get(h.targetSectorId);
+          const targetTitle =
+            h.targetTitle ??
+            (targetSector
+              ? SectorService.getGradeTitle(
+                  targetSector.grade ?? SectorService.gradeFromId(targetSector.id)
+                )
+              : "");
+          return {
+            ...h,
+            targetSectorName: targetName,
+            targetLevel: Math.max(1, Math.min(5, h.targetLevel ?? 1)),
+            targetTitle,
+          };
+        }),
       safeZone,
       pickups: Array.from(sector.world.pickups.values()),
       enemies: Array.from(sector.world.enemies.values()).map((e) => {

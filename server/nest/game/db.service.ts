@@ -1,7 +1,7 @@
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { Sequelize, Op } from "sequelize";
 import * as pg from "pg";
-import { initModels, UserModel, SessionModel, PlayerModel, ChatMessageModel } from "../models";
+import { initModels, UserModel, SessionModel, PlayerModel, ChatMessageModel, SectorModel } from "../models";
 
 export interface ResolvedUser {
   id: number;
@@ -16,6 +16,7 @@ export class DbService implements OnModuleDestroy {
   readonly Session: typeof SessionModel;
   readonly Player: typeof PlayerModel;
   readonly ChatMessage: typeof ChatMessageModel;
+  readonly Sector: typeof SectorModel;
 
   constructor() {
     const url = process.env.DATABASE_URL;
@@ -35,6 +36,7 @@ export class DbService implements OnModuleDestroy {
     this.Session = SessionModel;
     this.Player = PlayerModel;
     this.ChatMessage = ChatMessageModel;
+    this.Sector = SectorModel;
   }
 
   async onModuleDestroy(): Promise<void> {

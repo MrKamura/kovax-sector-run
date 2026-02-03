@@ -31,6 +31,7 @@ export class PlayerService {
           posX: entry.x,
           posY: entry.y,
           rotation: entry.rotation,
+          sectorId: entry.sectorId ?? null,
           lastPositionAt: new Date(),
         },
         { where: { userId: entry.userId } }

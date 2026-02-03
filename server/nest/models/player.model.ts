@@ -31,6 +31,7 @@ export interface PlayerAttributes {
   posX: number;
   posY: number;
   rotation: number;
+  sectorId: string | null;
   lastPositionAt: Date | null;
   shelterLevel: number;
   weapons: unknown[];
@@ -41,7 +42,7 @@ export interface PlayerAttributes {
   updatedAt?: Date;
 }
 
-export type PlayerCreationAttributes = Optional<PlayerAttributes, "id" | "createdAt" | "updatedAt">;
+export type PlayerCreationAttributes = Optional<PlayerAttributes, "id" | "sectorId" | "createdAt" | "updatedAt">;
 
 export class PlayerModel extends Model<PlayerAttributes, PlayerCreationAttributes> implements PlayerAttributes {
   declare id: number;
@@ -154,6 +155,11 @@ export function initPlayerModel(sequelize: Sequelize): typeof PlayerModel {
         type: DataTypes.FLOAT,
         allowNull: false,
         defaultValue: 0,
+      },
+      sectorId: {
+        type: DataTypes.STRING(32),
+        allowNull: true,
+        field: "sectorId",
       },
       lastPositionAt: {
         type: DataTypes.DATE,

@@ -5,10 +5,13 @@ export type WorldState = {
   sector?: {
     id: string;
     name: string;
+    title?: string;
     level: number;
+    grade?: number;
     color: string;
     width: number;
     height: number;
+    pvpAllowed?: boolean;
   };
   blackHoles?: Array<{
     id: string;
@@ -17,6 +20,9 @@ export type WorldState = {
     type: "warp" | "same";
     targetSectorId?: string;
     targetSectorName?: string;
+    targetTitle?: string;
+    targetGradeProbabilityPercent?: number;
+    targetRequiredPlayerLevel?: number;
     targetLevel?: number;
     targetColor?: string;
     appearsAt?: number;

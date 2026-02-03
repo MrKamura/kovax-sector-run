@@ -340,17 +340,15 @@ export function syncWorld(
       });
       let label: Phaser.GameObjects.Text | undefined;
       if (bh.targetSectorName) {
+        const level = Math.max(1, Math.min(5, bh.targetLevel ?? 1));
+        const titlePart = bh.targetTitle ? `, ${bh.targetTitle}` : "";
+        const labelText = `${formatSectorDisplayName(bh.targetSectorName)}${titlePart} (ур. ${level})`;
         const textObj = scene.add
-          .text(
-            bh.x,
-            bh.y - 78,
-            formatSectorDisplayName(bh.targetSectorName),
-            {
-              fontFamily: "Arial",
-              fontSize: "12px",
-              color: bh.targetColor ?? "#ffffff",
-            }
-          )
+          .text(bh.x, bh.y - 78, labelText, {
+            fontFamily: "Arial",
+            fontSize: "12px",
+            color: bh.targetColor ?? "#ffffff",
+          })
           .setOrigin(0.5, 1);
         textObj.setShadow(0, 2, "#000000", 4, true, true);
         textObj.setDepth(7);
@@ -374,8 +372,14 @@ export function syncWorld(
     } else {
       entry.sprite.setPosition(bh.x, bh.y);
       entry.sprite.setData("holeData", bh);
-      if (entry.label) {
+      if (entry.label && bh.targetSectorName) {
         entry.label.setPosition(bh.x, bh.y - 78);
+        const level = Math.max(1, Math.min(5, bh.targetLevel ?? 1));
+        const titlePart = bh.targetTitle ? `, ${bh.targetTitle}` : "";
+        entry.label.setText(
+          `${formatSectorDisplayName(bh.targetSectorName)}${titlePart} (ур. ${level})`
+        );
+        entry.label.setColor(bh.targetColor ?? "#ffffff");
       }
       entry.countdownLabel.setPosition(bh.x, bh.y - 95);
     }

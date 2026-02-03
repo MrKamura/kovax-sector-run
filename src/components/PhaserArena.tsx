@@ -725,7 +725,9 @@ const createSpaceArenaScene = (
     private applySectorInfo(sector?: {
       id: string;
       name: string;
+      title?: string;
       level: number;
+      grade?: number;
       color: string;
       width: number;
       height: number;
@@ -733,8 +735,9 @@ const createSpaceArenaScene = (
       if (!sector) {
         return;
       }
-      const level = Math.max(1, Math.min(2, sector.level));
-      this.audioManager.switchMainMusicToSectorLevel(level);
+      const level = Math.max(1, Math.min(5, sector.level ?? 1));
+      const grade = Math.max(1, Math.min(5, sector.grade ?? level));
+      this.audioManager.switchMainMusicToSectorLevel(grade);
       if (this.background) {
         this.background.setSize(sector.width, sector.height);
         this.background.setDisplaySize(sector.width, sector.height);
@@ -743,8 +746,12 @@ const createSpaceArenaScene = (
       this.physics.world.setBounds(0, 0, sector.width, sector.height);
       this.cameras.main.setBounds(0, 0, sector.width, sector.height);
       if (this.sectorText) {
-        this.sectorText.setText(`Сектор: ${formatSectorDisplayName(sector.name)}`);
-        this.sectorText.setColor(sector.color);
+        const name = formatSectorDisplayName(sector.name ?? undefined);
+        const titlePart = sector.title ? `, ${sector.title}` : "";
+        this.sectorText.setText(
+          `Сектор: ${name}${titlePart} (ур. ${level})`
+        );
+        this.sectorText.setColor(sector.color ?? "#888888");
       }
       if (this.currentSectorId !== sector.id) {
         this.appliedServerPosition = false;
@@ -1030,15 +1037,16 @@ const createSpaceArenaScene = (
       const sectorName = bh.targetSectorName
         ? formatSectorDisplayName(bh.targetSectorName)
         : "неизвестный сектор";
+      const targetTitle = bh.targetTitle ? `, ${bh.targetTitle}` : "";
       const playerLevel = useGameStore.getState().player?.level ?? 1;
-      const targetLevel = bh.targetLevel ?? 1;
-      const accessOpen =
-        targetLevel === 1 || playerLevel >= 3;
+      const targetLevel = Math.max(1, Math.min(5, bh.targetLevel ?? 1));
+      const requiredLevel = bh.targetRequiredPlayerLevel ?? 1;
+      const accessOpen = playerLevel >= requiredLevel;
       const accessLine = accessOpen
         ? "Доступ открыт"
-        : "Доступ закрыт: нужен 3+ уровень для жёлтых секторов.";
+        : `Доступ закрыт: нужен ${requiredLevel} уровень.`;
       const lines = [
-        `Чёрная дыра — портал в сектор ${sectorName}.`,
+        `Чёрная дыра — портал в сектор ${sectorName}${targetTitle} (ур. ${targetLevel}).`,
         accessLine,
       ];
       this.blackHoleTooltip = this.add

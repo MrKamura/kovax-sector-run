@@ -24,10 +24,13 @@ export type PresenceEntrySchema = z.infer<typeof presenceEntrySchema>;
 export const sectorSchema = z.object({
   id: z.string(),
   name: z.string(),
+  title: z.string().optional(),
   level: z.number(),
+  grade: z.number().optional(),
   color: z.string(),
   width: z.number(),
   height: z.number(),
+  pvpAllowed: z.boolean().optional(),
 });
 export type SectorSchema = z.infer<typeof sectorSchema>;
 
@@ -38,6 +41,9 @@ export const blackHoleSchema = z.object({
   type: z.enum(["warp", "same"]),
   targetSectorId: z.string().optional(),
   targetSectorName: z.string().optional(),
+  targetTitle: z.string().optional(),
+  targetGradeProbabilityPercent: z.number().optional(),
+  targetRequiredPlayerLevel: z.number().optional(),
   targetLevel: z.number().optional(),
   targetColor: z.string().optional(),
   appearsAt: z.number().optional(),

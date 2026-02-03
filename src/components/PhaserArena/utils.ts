@@ -13,10 +13,24 @@ export const lerpColor = (from: number, to: number, t: number) => {
   return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
 };
 
-/** Server names like "Green L1 • Aquila-12" → show suffix after "•". */
-export const formatSectorDisplayName = (raw: string) => {
-  const parts = raw.split("•");
-  return (parts[parts.length - 1] ?? raw).trim();
+const FALLBACK_SECTOR_NAME = "Неизвестный сектор";
+
+/** Treat "undefined", "undefined-123", "null", empty, etc. as invalid sector names from server. */
+const isInvalidName = (s: string) =>
+  !s ||
+  /^\s*undefined(\s|$|-)/i.test(s) ||
+  /^\s*null(\s|$|-)/i.test(s) ||
+  /^\s*undefined\s*$/i.test(s) ||
+  /^\s*null\s*$/i.test(s);
+
+/** Server names like "Green L1 • Aquila-12" → show suffix after "•". Returns fallback if raw is missing or invalid. */
+export const formatSectorDisplayName = (raw: string | undefined | null): string => {
+  const s = raw != null ? String(raw).trim() : "";
+  if (isInvalidName(s)) return FALLBACK_SECTOR_NAME;
+  const parts = s.split("•");
+  const suffix = (parts[parts.length - 1] ?? s).trim();
+  if (isInvalidName(suffix)) return FALLBACK_SECTOR_NAME;
+  return suffix;
 };
 
 export const monsterNameColor = (monsterLevel: number, playerLevel: number) => {

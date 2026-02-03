@@ -128,14 +128,6 @@ export class GameGateway {
 
     presence.addClient(user.id, ws);
     const existingPresence = presence.getEntry(user.id);
-    const assignedSector =
-      existingPresence && sectorService.sectors.has(existingPresence.sectorId)
-        ? sectorService.sectors.get(existingPresence.sectorId)!
-        : sectorService.findOrCreateSector(1, undefined, presence);
-
-    (ws as GameSocket).userId = user.id;
-    (ws as GameSocket).sectorId = assignedSector.id;
-    (ws as GameSocket).user = user;
 
     let posX = existingPresence?.x ?? 0;
     let posY = existingPresence?.y ?? 0;
@@ -148,17 +140,31 @@ export class GameGateway {
     let damage = 12;
     const shouldSendPlayerUpdate = !existingPresence;
 
+    let savedSectorId: string | null = null;
     if (!existingPresence) {
       try {
         const playerRow = await db.Player.findOne({
           where: { userId: user.id },
-          attributes: ["posX", "posY", "rotation", "health", "maxHealth", "level", "exp", "expToNext", "damage", "monsterProgress"],
+          attributes: ["posX", "posY", "rotation", "sectorId", "health", "maxHealth", "level", "exp", "expToNext", "damage", "monsterProgress"],
         });
         if (playerRow) {
-          const row = playerRow.get();
+          const row = playerRow.get() as {
+            posX?: unknown;
+            posY?: unknown;
+            rotation?: unknown;
+            sectorId?: string | null;
+            health?: unknown;
+            maxHealth?: unknown;
+            level?: unknown;
+            exp?: unknown;
+            expToNext?: unknown;
+            damage?: unknown;
+            monsterProgress?: unknown;
+          };
           posX = Number(row.posX) || 0;
           posY = Number(row.posY) || 0;
           rotation = Number(row.rotation) || 0;
+          savedSectorId = row.sectorId ?? null;
           const monsterKey = normalizeMonsterChoice(user.shipChoice);
           const progress = (row.monsterProgress as Record<string, unknown>) || {};
           const stored = getMonsterProgressEntry(progress, monsterKey);
@@ -182,7 +188,20 @@ export class GameGateway {
       } catch (err) {
         console.error("Failed to load player position:", err);
       }
-    } else {
+    }
+
+    const assignedSector =
+      existingPresence && sectorService.sectors.has(existingPresence.sectorId)
+        ? sectorService.sectors.get(existingPresence.sectorId)!
+        : savedSectorId && sectorService.sectors.has(savedSectorId)
+          ? sectorService.sectors.get(savedSectorId)!
+          : sectorService.findOrCreateSector(1, undefined, presence);
+
+    (ws as GameSocket).userId = user.id;
+    (ws as GameSocket).sectorId = assignedSector.id;
+    (ws as GameSocket).user = user;
+
+    if (existingPresence) {
       const stats = playerStatsForLevel(level, existingPresence.shipChoice);
       maxHealth = maxHealth || stats.maxHealth;
       damage = stats.damage;

@@ -32,6 +32,10 @@ async function bootstrap() {
   const nestApp = await NestFactory.createApplicationContext(AppModule, {
     logger: false,
   });
+  const db = nestApp.get(DbService);
+  const sectorService = nestApp.get(SectorService);
+  await sectorService.loadSectorsFromDb(db);
+
   const gameGateway = nestApp.get(GameGateway);
   const worldTickState = createWorldTickState();
 
