@@ -23,6 +23,11 @@ export const GET = async () => {
       shipChoice: user.shipChoice,
       musicVolume: Number(user.musicVolume ?? 0.45),
       sfxVolume: Number(user.sfxVolume ?? 0.55),
+      chatPositionX: user.chatPositionX ?? null,
+      chatPositionY: user.chatPositionY ?? null,
+      chatWidth: user.chatWidth ?? null,
+      chatHeight: user.chatHeight ?? null,
+      chatOpacity: user.chatOpacity ?? null,
     },
   });
   if (nextExpiry && token) {

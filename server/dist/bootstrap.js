@@ -65,6 +65,9 @@ async function bootstrap() {
     const nestApp = await core_1.NestFactory.createApplicationContext(app_module_1.AppModule, {
         logger: false,
     });
+    const db = nestApp.get(db_service_1.DbService);
+    const sectorService = nestApp.get(sector_service_1.SectorService);
+    await sectorService.loadSectorsFromDb(db);
     const gameGateway = nestApp.get(game_gateway_1.GameGateway);
     const worldTickState = (0, world_tick_service_1.createWorldTickState)();
     // Pass resolved services so gateway works when Nest does not inject deps (createApplicationContext)

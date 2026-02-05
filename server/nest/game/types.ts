@@ -143,4 +143,5 @@ export interface ChatMessage {
   nickname: string;
   text: string;
   createdAt: number;
+  targetUserId?: number | null;
 }

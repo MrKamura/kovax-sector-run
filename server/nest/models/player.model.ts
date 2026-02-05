@@ -61,6 +61,7 @@ export class PlayerModel extends Model<PlayerAttributes, PlayerCreationAttribute
   declare posX: number;
   declare posY: number;
   declare rotation: number;
+  declare sectorId: string | null;
   declare lastPositionAt: Date | null;
   declare shelterLevel: number;
   declare weapons: unknown[];

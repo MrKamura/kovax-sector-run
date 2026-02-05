@@ -611,16 +611,14 @@
 
 .chatPanel {
   position: absolute;
-  left: 20px;
-  bottom: 20px;
-  width: min(320px, 90vw);
-  background: rgba(12, 16, 22, 0.92);
   border: 1px solid #2a3648;
   border-radius: 14px;
   padding: 10px;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   pointer-events: auto;
+  user-select: none;
 }
 
 .chatPanelSector {
@@ -977,6 +975,12 @@
   color: #9aa7bb;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  flex-shrink: 0;
+  padding: 4px 0;
+}
+
+.chatHeader > span {
+  user-select: none;
 }
 
 .chatTabs {
@@ -1001,12 +1005,13 @@
 }
 
 .chatMessages {
-  max-height: 180px;
   overflow-y: auto;
   display: grid;
   gap: 6px;
   font-size: 12px;
   color: #d8d2c4;
+  flex: 1;
+  min-height: 0;
 }
 
 .chatMessage {
@@ -1020,6 +1025,7 @@
 .chatInputRow {
   display: flex;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .chatInput {
@@ -1040,6 +1046,335 @@
   color: #d9e2f2;
   font-size: 12px;
   cursor: pointer;
+}
+
+.chatPanelPrivate {
+  border-color: #4a3a1a;
+}
+
+.chatPanelSystem {
+  border-color: #3a4a2a;
+}
+
+.chatMessagePrivate {
+  color: #e6c84c;
+}
+
+.chatMessagePrivate .chatName,
+.chatMessagePrivate .chatNameButton {
+  color: #d4b830;
+}
+
+.chatMessageSector {
+  color: #7ed8ff;
+}
+
+.chatMessageSector .chatName,
+.chatMessageSector .chatNameButton {
+  color: #5ab8d4;
+}
+
+.chatMessageSystem {
+  color: #c9a882;
+}
+
+.chatMessageSystem .chatName {
+  color: #a6896a;
+}
+
+.chatEmpty {
+  padding: 12px;
+  text-align: center;
+  color: #6a7a8a;
+  font-style: italic;
+  font-size: 11px;
+}
+
+.chatNameButton {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: #7ed8ff;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.chatNameButton:hover {
+  color: #a8e4ff;
+}
+
+.chatPmMenu {
+  padding: 8px 10px;
+  background: #1a1f28;
+  border: 1px solid #3a4555;
+  border-radius: 10px;
+  margin-bottom: 6px;
+}
+
+.chatPmMenuHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #9aa7bb;
+  margin-bottom: 6px;
+}
+
+.chatPmMenuClose {
+  background: none;
+  border: none;
+  color: #8a99ad;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.chatPmMenuClose:hover {
+  color: #c1c8d6;
+}
+
+.chatPmMenuInputRow {
+  display: flex;
+  gap: 8px;
+}
+
+.chatPrivateList {
+  padding: 6px 0;
+  font-size: 12px;
+  color: #9aa7bb;
+}
+
+.chatPrivateEmpty {
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.chatPrivateConversations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chatPrivateConversationBtn {
+  background: #1e2530;
+  border: 1px solid #2c3644;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #c1c8d6;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chatPrivateConversationBtn:hover {
+  background: #2a3442;
+  color: #f1f4fb;
+}
+
+.chatPrivateBack {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 6px;
+  font-size: 11px;
+  color: #9aa7bb;
+}
+
+.chatPrivateBackBtn {
+  background: none;
+  border: none;
+  color: #7ed8ff;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chatPrivateBackBtn:hover {
+  text-decoration: underline;
+}
+
+.chatPrivateWith {
+  font-weight: 600;
+  color: #d8d2c4;
+}
+
+.chatFilterContainer {
+  position: relative;
+}
+
+.chatFilterButton {
+  background: #1e2530;
+  border: 1px solid #2c3644;
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: #9aa7bb;
+  font-size: 14px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.chatFilterButton:hover {
+  background: #2a3442;
+  color: #c1c8d6;
+}
+
+.chatFilterMenu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: #151a22;
+  border: 1px solid #2c3644;
+  border-radius: 8px;
+  padding: 6px;
+  min-width: 140px;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.chatFilterMenuItem {
+  padding: 6px 8px;
+}
+
+.chatFilterMenuItem label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #c1c8d6;
+}
+
+.chatFilterMenuItem input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.chatFilterLabelSector {
+  color: #7ed8ff;
+}
+
+.chatFilterLabelPrivate {
+  color: #e6c84c;
+}
+
+.chatFilterLabelSystem {
+  color: #c9a882;
+}
+
+.chatResizeHandle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  background: rgba(42, 54, 72, 0.6);
+  border-radius: 0 14px 0 0;
+  cursor: nesw-resize;
+  z-index: 10;
+}
+
+.chatResizeHandle:hover {
+  background: rgba(58, 74, 95, 0.8);
+}
+
+.chatResizeHandle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 8px 0 0 8px;
+  border-color: rgba(200, 200, 200, 0.5) transparent transparent transparent;
+}
+
+.chatHeaderControls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chatOpacityContainer {
+  position: relative;
+}
+
+.chatOpacityButton {
+  background: rgba(42, 54, 72, 0.6);
+  border: 1px solid #2c3644;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #c1c8d6;
+  cursor: pointer;
+  min-width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chatOpacityButton:hover {
+  background: rgba(58, 74, 95, 0.8);
+  color: #f1f4fb;
+}
+
+.chatOpacityMenu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: rgba(12, 16, 22, 0.98);
+  border: 1px solid #3a4555;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 200px;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.chatOpacitySliderContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chatOpacityLabel {
+  font-size: 11px;
+  color: #9aa7bb;
+  text-align: center;
+}
+
+.chatOpacitySlider {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: #1e2530;
+  outline: none;
+  cursor: pointer;
+}
+
+.chatOpacitySlider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #7ed8ff;
+  cursor: pointer;
+}
+
+.chatOpacitySlider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #7ed8ff;
+  cursor: pointer;
+  border: none;
 }
 
 .playerPanel {

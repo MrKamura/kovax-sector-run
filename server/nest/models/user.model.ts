@@ -8,6 +8,11 @@ export interface UserAttributes {
   shipChoice: string | null;
   musicVolume: number;
   sfxVolume: number;
+  chatPositionX: number | null;
+  chatPositionY: number | null;
+  chatWidth: number | null;
+  chatHeight: number | null;
+  chatOpacity: number | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -25,6 +30,11 @@ export class UserModel extends Model<UserAttributes, UserCreationAttributes> imp
   declare shipChoice: string | null;
   declare musicVolume: number;
   declare sfxVolume: number;
+  declare chatPositionX: number | null;
+  declare chatPositionY: number | null;
+  declare chatWidth: number | null;
+  declare chatHeight: number | null;
+  declare chatOpacity: number | null;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 }
@@ -66,6 +76,31 @@ export function initUserModel(sequelize: Sequelize): typeof UserModel {
         allowNull: false,
         defaultValue: 0.55,
         field: "sfxVolume",
+      },
+      chatPositionX: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: "chatPositionX",
+      },
+      chatPositionY: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: "chatPositionY",
+      },
+      chatWidth: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: "chatWidth",
+      },
+      chatHeight: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: "chatHeight",
+      },
+      chatOpacity: {
+        type: DataTypes.REAL,
+        allowNull: true,
+        field: "chatOpacity",
       },
     },
     {

@@ -17,6 +17,10 @@ import {
   MAX_PICKUPS,
   ENEMY_COUNT,
   ASTEROID_COUNT,
+  DEATH_PENALTY_BASE_PERCENT_MIN,
+  DEATH_PENALTY_BASE_PERCENT_MAX,
+  PVE_DEATH_PENALTY_PERCENT_BY_GRADE,
+  PVP_DEATH_PENALTY_EXTRA_MULT,
 } from "../config/constants";
 import type { Sector, SectorWorld, BlackHoleState, SafeZoneState } from "./types";
 import { PresenceService } from "./presence.service";
@@ -490,6 +494,16 @@ export class SectorService {
     const sectorName = this.getSectorDisplayName(sector);
     const sectorGrade = sector.grade ?? SectorService.gradeFromId(sector.id);
     const sectorTitle = SectorService.getGradeTitle(sectorGrade);
+    const sectorPercent = PVE_DEATH_PENALTY_PERCENT_BY_GRADE[sectorGrade] ?? PVE_DEATH_PENALTY_PERCENT_BY_GRADE[1];
+    const pvpAllowed = sector.config?.pvpAllowed ?? false;
+    const deathPenaltyPveMin = Math.min(100, DEATH_PENALTY_BASE_PERCENT_MIN + sectorPercent);
+    const deathPenaltyPveMax = Math.min(100, DEATH_PENALTY_BASE_PERCENT_MAX + sectorPercent);
+    const deathPenaltyPvpMin = pvpAllowed
+      ? Math.min(100, Math.floor((DEATH_PENALTY_BASE_PERCENT_MIN + sectorPercent) * PVP_DEATH_PENALTY_EXTRA_MULT))
+      : undefined;
+    const deathPenaltyPvpMax = pvpAllowed
+      ? Math.min(100, Math.floor((DEATH_PENALTY_BASE_PERCENT_MAX + sectorPercent) * PVP_DEATH_PENALTY_EXTRA_MULT))
+      : undefined;
     return {
       seed: sector.world.seed,
       sector: {
@@ -501,7 +515,10 @@ export class SectorService {
         color: sector.config?.color ?? "#ffffff",
         width: sector.config.width,
         height: sector.config.height,
-        pvpAllowed: sector.config?.pvpAllowed ?? false,
+        pvpAllowed,
+        deathPenaltyPveMin,
+        deathPenaltyPveMax,
+        ...(pvpAllowed && { deathPenaltyPvpMin, deathPenaltyPvpMax }),
       },
       blackHoles: (sector.world.blackHoles || [])
         .filter((h) => (h.appearsAt ?? 0) <= now && h.expiresAt > now)

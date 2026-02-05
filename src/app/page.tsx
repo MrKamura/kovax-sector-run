@@ -71,7 +71,7 @@ export default function Home() {
   const needsShip = !!user && !!user.nickname && !user.shipChoice;
 
   const chatActive = !!user && !needsNickname && !needsShip;
-  const chat = useChat(chatActive);
+  const chat = useChat(chatActive, user?.id ?? null);
 
   const splash = useSplash(!!user && showIntroAfterAuth);
   const showSplashVisible =
@@ -300,6 +300,8 @@ export default function Home() {
                 killedByUserId={deathInfo?.killedByUserId}
                 lostTokens={deathInfo?.lostTokens ?? 0}
                 lostExp={deathInfo?.lostExp ?? 0}
+                expPercent={deathInfo?.expPercent}
+                tokenPercent={deathInfo?.tokenPercent}
                 onRespawn={() => requestRespawn()}
                 onRespawnVengeance={requestRespawnVengeance}
               />
@@ -353,6 +355,21 @@ export default function Home() {
               onSend={chat.sendChat}
               chatListRef={chat.chatListRef}
               chatInputRef={chat.chatInputRef}
+              currentUserId={user?.id ?? null}
+              privateThreads={chat.privateThreads}
+              selectedPrivateUserId={chat.selectedPrivateUserId}
+              setSelectedPrivateUserId={chat.setSelectedPrivateUserId}
+              requestPrivateHistory={chat.requestPrivateHistory}
+              pmTarget={chat.pmTarget}
+              setPmTarget={chat.setPmTarget}
+              enabledChats={chat.enabledChats}
+              setEnabledChats={chat.setEnabledChats}
+              chatPosition={chat.chatPosition}
+              setChatPosition={chat.setChatPosition}
+              chatSize={chat.chatSize}
+              setChatSize={chat.setChatSize}
+              chatOpacity={chat.chatOpacity}
+              setChatOpacity={chat.setChatOpacity}
             />
 
             <PlayerPanel

@@ -31,6 +31,10 @@ export const sectorSchema = z.object({
   width: z.number(),
   height: z.number(),
   pvpAllowed: z.boolean().optional(),
+  deathPenaltyPveMin: z.number().optional(),
+  deathPenaltyPveMax: z.number().optional(),
+  deathPenaltyPvpMin: z.number().optional(),
+  deathPenaltyPvpMax: z.number().optional(),
 });
 export type SectorSchema = z.infer<typeof sectorSchema>;
 
@@ -152,6 +156,8 @@ export const huntedSchema = z.object({
 export const deathInfoSchema = z.object({
   lostTokens: z.number(),
   lostExp: z.number(),
+  expPercent: z.number().optional(),
+  tokenPercent: z.number().optional(),
   killedBy: z.string().optional(),
   killedByUserId: z.number().optional(),
 });

@@ -24,10 +24,14 @@ let PlayerService = class PlayerService {
         if (!entry)
             return;
         const db = dbOverride ?? this.db;
-        if (!db?.pool)
-            return;
         try {
-            await db.pool.query(`UPDATE players SET "posX" = $1, "posY" = $2, "rotation" = $3, "lastPositionAt" = NOW() WHERE "userId" = $4`, [entry.x, entry.y, entry.rotation, entry.userId]);
+            await db.Player.update({
+                posX: entry.x,
+                posY: entry.y,
+                rotation: entry.rotation,
+                sectorId: entry.sectorId ?? null,
+                lastPositionAt: new Date(),
+            }, { where: { userId: entry.userId } });
         }
         catch (err) {
             console.error("Failed to persist player position:", err);
@@ -48,17 +52,15 @@ let PlayerService = class PlayerService {
         if (!amount)
             return null;
         const db = dbOverride ?? this.db;
-        if (!db?.pool)
-            return null;
         const monsterKey = (0, utils_1.normalizeMonsterChoice)(shipChoice);
-        const result = await db.pool.query(`SELECT level, exp, resources, "monsterProgress" FROM players WHERE "userId" = $1`, [userId]);
-        if (result.rowCount === 0)
+        const player = await db.Player.findOne({ where: { userId } });
+        if (!player)
             return null;
-        const progress = result.rows[0].monsterProgress || {};
+        const progress = player.monsterProgress || {};
         const stored = (0, utils_1.getMonsterProgressEntry)(progress, monsterKey);
-        const previousLevel = (0, utils_1.clampLevel)(Number(stored?.level ?? result.rows[0].level) || 1);
+        const previousLevel = (0, utils_1.clampLevel)(Number(stored?.level ?? player.level) || 1);
         let level = previousLevel;
-        let exp = Number(stored?.exp ?? result.rows[0].exp) || 0;
+        let exp = Number(stored?.exp ?? player.exp) || 0;
         let expToNext = (0, utils_1.expToNextLevel)(level);
         const MAX_PLAYER_LEVEL = 100;
         if (level < MAX_PLAYER_LEVEL) {
@@ -95,7 +97,7 @@ let PlayerService = class PlayerService {
                 health,
             },
         };
-        let nextResources = result.rows[0].resources || { scrap: 0, tokens: 0 };
+        let nextResources = player.resources || { scrap: 0, tokens: 0 };
         const BASE_ENERGY_CAP = 10;
         const ENERGY_CAP_PER_LEVEL = 3;
         if (leveledUp) {
@@ -104,10 +106,25 @@ let PlayerService = class PlayerService {
                 scrap: energyCap,
                 tokens: Number(nextResources.tokens ?? 0) || 0,
             };
-            await db.pool.query(`UPDATE players SET level = $1, exp = $2, "expToNext" = $3, "maxHealth" = $4, damage = $5, "monsterProgress" = $6, resources = $7 WHERE "userId" = $8`, [level, exp, expToNext, stats.maxHealth, stats.damage, nextProgress, nextResources, userId]);
+            await db.Player.update({
+                level,
+                exp,
+                expToNext,
+                maxHealth: stats.maxHealth,
+                damage: stats.damage,
+                monsterProgress: nextProgress,
+                resources: nextResources,
+            }, { where: { userId } });
         }
         else {
-            await db.pool.query(`UPDATE players SET level = $1, exp = $2, "expToNext" = $3, "maxHealth" = $4, damage = $5, "monsterProgress" = $6 WHERE "userId" = $7`, [level, exp, expToNext, stats.maxHealth, stats.damage, nextProgress, userId]);
+            await db.Player.update({
+                level,
+                exp,
+                expToNext,
+                maxHealth: stats.maxHealth,
+                damage: stats.damage,
+                monsterProgress: nextProgress,
+            }, { where: { userId } });
         }
         const out = {
             level,

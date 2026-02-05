@@ -7,6 +7,8 @@ type DeathOverlayProps = {
   killedByUserId: number | undefined;
   lostTokens: number;
   lostExp: number;
+  expPercent?: number;
+  tokenPercent?: number;
   onRespawn: () => void;
   onRespawnVengeance: (userId: number) => void;
 };
@@ -16,6 +18,8 @@ export function DeathOverlay({
   killedByUserId,
   lostTokens,
   lostExp,
+  expPercent,
+  tokenPercent,
   onRespawn,
   onRespawnVengeance,
 }: DeathOverlayProps) {
@@ -25,10 +29,13 @@ export function DeathOverlay({
         <h2>Вы погибли</h2>
         {killedBy && <p>Killed: {killedBy}</p>}
         <p>
-          Потеряно токенов: {lostTokens}. Потеряно опыта: {lostExp}.
+          Потеряно токенов: {lostTokens}
+          {tokenPercent != null && ` (${tokenPercent}%)`}.
+          Потеряно опыта: {lostExp}
+          {expPercent != null && ` (${expPercent}%)`}.
         </p>
         <div className={styles.deathButtons}>
-          {killedByUserId != null && (
+          {killedByUserId != null && killedByUserId > 0 && (
             <button
               className={styles.vengeanceRespawnButton}
               onClick={() => onRespawnVengeance(killedByUserId)}
@@ -37,7 +44,7 @@ export function DeathOverlay({
             </button>
           )}
           <button className={styles.primaryButton} onClick={onRespawn}>
-            {killedByUserId != null ? "Respawn" : "OK"}
+            {killedByUserId != null && killedByUserId > 0 ? "Respawn" : "OK"}
           </button>
         </div>
       </div>

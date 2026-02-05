@@ -107,12 +107,6 @@ let GameGateway = class GameGateway {
         }
         presence.addClient(user.id, ws);
         const existingPresence = presence.getEntry(user.id);
-        const assignedSector = existingPresence && sectorService.sectors.has(existingPresence.sectorId)
-            ? sectorService.sectors.get(existingPresence.sectorId)
-            : sectorService.findOrCreateSector(1, undefined, presence);
-        ws.userId = user.id;
-        ws.sectorId = assignedSector.id;
-        ws.user = user;
         let posX = existingPresence?.x ?? 0;
         let posY = existingPresence?.y ?? 0;
         let rotation = existingPresence?.rotation ?? 0;
@@ -123,14 +117,19 @@ let GameGateway = class GameGateway {
         let expToNext = (0, utils_1.expToNextLevel)(level);
         let damage = 12;
         const shouldSendPlayerUpdate = !existingPresence;
+        let savedSectorId = null;
         if (!existingPresence) {
             try {
-                const playerRow = await db.pool.query(`SELECT "posX", "posY", "rotation", "health", "maxHealth", "level", "exp", "expToNext", "damage", "monsterProgress" FROM players WHERE "userId" = $1`, [user.id]);
-                if (playerRow.rowCount && playerRow.rowCount > 0) {
-                    const row = playerRow.rows[0];
+                const playerRow = await db.Player.findOne({
+                    where: { userId: user.id },
+                    attributes: ["posX", "posY", "rotation", "sectorId", "health", "maxHealth", "level", "exp", "expToNext", "damage", "monsterProgress"],
+                });
+                if (playerRow) {
+                    const row = playerRow.get();
                     posX = Number(row.posX) || 0;
                     posY = Number(row.posY) || 0;
                     rotation = Number(row.rotation) || 0;
+                    savedSectorId = row.sectorId ?? null;
                     const monsterKey = (0, utils_1.normalizeMonsterChoice)(user.shipChoice);
                     const progress = row.monsterProgress || {};
                     const stored = (0, utils_1.getMonsterProgressEntry)(progress, monsterKey);
@@ -138,8 +137,8 @@ let GameGateway = class GameGateway {
                         level = Number(stored.level) || 1;
                         exp = Number(stored.exp) || 0;
                         expToNext = Number(stored.expToNext) || (0, utils_1.expToNextLevel)(level);
-                        maxHealth = Number(stored.maxHealth) || (0, utils_1.playerStatsForLevel)(level, monsterKey).maxHealth;
-                        damage = Number(stored.damage) || (0, utils_1.playerStatsForLevel)(level, monsterKey).damage;
+                        maxHealth = Number(stored.maxHealth) ?? (0, utils_1.playerStatsForLevel)(level, monsterKey).maxHealth;
+                        damage = Number(stored.damage) ?? (0, utils_1.playerStatsForLevel)(level, monsterKey).damage;
                         health = Number(stored.health) || maxHealth;
                     }
                     else {
@@ -157,7 +156,15 @@ let GameGateway = class GameGateway {
                 console.error("Failed to load player position:", err);
             }
         }
-        else {
+        const assignedSector = existingPresence && sectorService.sectors.has(existingPresence.sectorId)
+            ? sectorService.sectors.get(existingPresence.sectorId)
+            : savedSectorId && sectorService.sectors.has(savedSectorId)
+                ? sectorService.sectors.get(savedSectorId)
+                : sectorService.findOrCreateSector(1, undefined, presence);
+        ws.userId = user.id;
+        ws.sectorId = assignedSector.id;
+        ws.user = user;
+        if (existingPresence) {
             const stats = (0, utils_1.playerStatsForLevel)(level, existingPresence.shipChoice);
             maxHealth = maxHealth || stats.maxHealth;
             damage = stats.damage;

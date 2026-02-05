@@ -39,15 +39,22 @@ function sendSelfUpdateToPresence(presence, userId, payload) {
 }
 async function persistHealthForTick(db, userId, next, shipChoice) {
     try {
-        const res = await db.pool.query(`SELECT "monsterProgress" FROM players WHERE "userId" = $1`, [userId]);
-        const progress = res.rowCount ? res.rows[0].monsterProgress || {} : {};
+        const player = await db.Player.findOne({
+            where: { userId },
+            attributes: ["monsterProgress"],
+        });
+        const progress = player?.monsterProgress || {};
         const key = (0, utils_2.normalizeMonsterChoice)(shipChoice);
         const stored = (0, utils_2.getMonsterProgressEntry)(progress, key) || {};
         const nextProgress = {
             ...progress,
             [key]: { ...stored, health: next },
         };
-        await db.pool.query(`UPDATE players SET health = $1, "lastHealthAt" = NOW(), "monsterProgress" = $2 WHERE "userId" = $3`, [next, nextProgress, userId]);
+        await db.Player.update({
+            health: next,
+            lastHealthAt: new Date(),
+            monsterProgress: nextProgress,
+        }, { where: { userId } });
     }
     catch {
         // ignore
@@ -163,6 +170,31 @@ function runWorldTick(services, state) {
                     if (entry.sectorId === sector.id)
                         entry.wasInSafeZone = false;
                 }
+            }
+            // Healing skill: strong health regen while effect is active
+            const HEALING_REGEN_PER_SEC = 25;
+            for (const entry of presence.presence.values()) {
+                if (entry.isDead || entry.sectorId !== sector.id)
+                    continue;
+                if (!entry.healingExpiresAt || entry.healingExpiresAt <= now)
+                    continue;
+                const last = Number(entry.lastHealingRegenAt ?? 0) || 0;
+                if (now - last < 1000)
+                    continue;
+                entry.lastHealingRegenAt = now;
+                const maxHealth = Number(entry.maxHealth ?? 0) || 0;
+                if (maxHealth <= 0)
+                    continue;
+                const current = Number(entry.health) || 0;
+                if (current >= maxHealth)
+                    continue;
+                const heal = Math.min(HEALING_REGEN_PER_SEC, maxHealth - current);
+                const next = current + heal;
+                entry.health = next;
+                entry.updatedAt = now;
+                presence.setEntry(entry.userId, entry);
+                broadcast.sendPlayerUpdate(entry.userId, { health: next });
+                void persistHealthForTick(db, entry.userId, next, entry.shipChoice);
             }
             for (const entry of presence.presence.values()) {
                 if (entry.isDead || entry.sectorId !== sector.id)

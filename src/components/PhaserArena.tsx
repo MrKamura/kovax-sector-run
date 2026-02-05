@@ -731,6 +731,10 @@ const createSpaceArenaScene = (
       color: string;
       width: number;
       height: number;
+      deathPenaltyPveMin?: number;
+      deathPenaltyPveMax?: number;
+      deathPenaltyPvpMin?: number;
+      deathPenaltyPvpMax?: number;
     }) {
       if (!sector) {
         return;
@@ -748,8 +752,24 @@ const createSpaceArenaScene = (
       if (this.sectorText) {
         const name = formatSectorDisplayName(sector.name ?? undefined);
         const titlePart = sector.title ? `, ${sector.title}` : "";
+        const pveRange =
+          sector.deathPenaltyPveMin != null && sector.deathPenaltyPveMax != null
+            ? sector.deathPenaltyPveMin === sector.deathPenaltyPveMax
+              ? `${sector.deathPenaltyPveMin}%`
+              : `${sector.deathPenaltyPveMin}–${sector.deathPenaltyPveMax}%`
+            : "";
+        const pvpRange =
+          sector.deathPenaltyPvpMin != null && sector.deathPenaltyPvpMax != null
+            ? sector.deathPenaltyPvpMin === sector.deathPenaltyPvpMax
+              ? `${sector.deathPenaltyPvpMin}%`
+              : `${sector.deathPenaltyPvpMin}–${sector.deathPenaltyPvpMax}%`
+            : "";
+        const deathLine =
+          pveRange || pvpRange
+            ? `\nПотеря при смерти: ${[pveRange && `мобы ${pveRange}`, pvpRange && `игроки ${pvpRange}`].filter(Boolean).join(", ")}`
+            : "";
         this.sectorText.setText(
-          `Сектор: ${name}${titlePart} (ур. ${level})`
+          `Сектор: ${name}${titlePart} (ур. ${level})${deathLine}`
         );
         this.sectorText.setColor(sector.color ?? "#888888");
       }
@@ -1572,6 +1592,13 @@ const createSpaceArenaScene = (
           this.socket.send(JSON.stringify({ type: "player_dead" }));
           this.deathNotified = true;
         }
+        if (!this.player) {
+          this.interpolateRemotePlayers();
+          if (this.fpsText) {
+            this.fpsText.setText(`FPS: ${Math.round(this.game.loop.actualFps)}`);
+          }
+          return;
+        }
         this.player.setVelocity(0, 0);
         this.player.setVisible(true);
         this.player.play(getShipBlindAnim(useGameStore.getState().user?.shipChoice), true);
@@ -1587,6 +1614,7 @@ const createSpaceArenaScene = (
       }
       if (this.deathNotified) {
         this.deathNotified = false;
+        if (!this.player) return;
         this.player.setVisible(true);
         this.player.play(getShipIdleAnim(useGameStore.getState().user?.shipChoice), true);
         this.player.setScale(getShipScale(useGameStore.getState().user?.shipChoice));
@@ -1647,6 +1675,15 @@ const createSpaceArenaScene = (
         }
       }
 
+      if (!this.player) {
+        return;
+      }
+
+      const body = this.player.body as Phaser.Physics.Arcade.Body | null;
+      if (!body) {
+        return;
+      }
+
       this.player.setMaxVelocity(
         MOVE_SPEED * this.playerSpeedMultiplier * movementSpeedBoost * gravityPitFactor * lowHealthSpeedBoost
       );
@@ -1659,7 +1696,6 @@ const createSpaceArenaScene = (
       const baseScale = getShipScale(choice) * this.appliedLevelScale;
       const furyScale = baseScale * (furyActive ? FURY_SIZE_MULT : 1);
       this.player.setScale(furyScale);
-      const body = this.player.body as Phaser.Physics.Arcade.Body | null;
       if (body) {
         const radius =
           Math.max(this.player.displayWidth, this.player.displayHeight) * 0.35;

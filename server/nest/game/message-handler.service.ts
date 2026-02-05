@@ -30,6 +30,11 @@ import {
   PICKUP_RESPAWN_MS,
   EXIT_GRACE_MS,
   MIN_PLAYER_LEVEL_FOR_SECTOR_LEVEL,
+  DEATH_PENALTY_BASE_PERCENT_MIN,
+  DEATH_PENALTY_BASE_PERCENT_MAX,
+  PVE_DEATH_PENALTY_PERCENT_BY_GRADE,
+  PVP_DEATH_PENALTY_PERCENT_BY_GRADE,
+  PVP_DEATH_PENALTY_EXTRA_MULT,
 } from "../config/constants";
 import type { Sector } from "./types";
 
@@ -90,7 +95,7 @@ export class MessageHandlerService {
       return;
     }
     if (message.type === "player_dead") {
-      this.handlePlayerDead(user, services);
+      await this.handlePlayerDead(user, services);
       return;
     }
     if (message.type === "respawn" || message.type === "respawn_vengeance") {
@@ -139,6 +144,10 @@ export class MessageHandlerService {
     }
     if (message.type === "chat_message") {
       await this.handleChatMessage(user, message, services);
+      return;
+    }
+    if (message.type === "chat_history_request") {
+      await this.handleChatHistoryRequest(user, message, socket, services);
       return;
     }
     if (message.type === "request_exit") {
@@ -190,13 +199,80 @@ export class MessageHandlerService {
     }
   }
 
-  private handlePlayerDead(user: ResolvedUser, services: HandlerServices): void {
+  private async handlePlayerDead(user: ResolvedUser, services: HandlerServices): Promise<void> {
     const entry = services.presence.getEntry(user.id);
-    if (entry && !entry.isDead) {
-      entry.isDead = true;
-      entry.updatedAt = Date.now();
+    if (!entry || entry.isDead) return;
+
+    entry.isDead = true;
+    entry.updatedAt = Date.now();
+    services.presence.setEntry(user.id, entry);
+    if (entry.sectorId) services.broadcast.broadcastPresence(entry.sectorId, services.presence);
+
+    const sector = entry.sectorId ? services.sectorService.sectors.get(entry.sectorId) : null;
+    const grade = sector?.grade ?? 1;
+    const basePercent = randInt(DEATH_PENALTY_BASE_PERCENT_MIN, DEATH_PENALTY_BASE_PERCENT_MAX);
+    const sectorPercent = PVE_DEATH_PENALTY_PERCENT_BY_GRADE[grade] ?? PVE_DEATH_PENALTY_PERCENT_BY_GRADE[1];
+    const penaltyPercent = Math.min(100, basePercent + sectorPercent);
+
+    try {
+      const playerRow = await services.db.Player.findOne({
+        where: { userId: user.id },
+        attributes: ["exp", "expToNext", "resources", "monsterProgress"],
+      });
+      if (!playerRow) return;
+
+      const resources = (playerRow.resources as { scrap?: number; tokens?: number }) || { scrap: 0, tokens: 0 };
+      const tokens = Number(resources.tokens ?? 0) || 0;
+      const progress = (playerRow.monsterProgress as Record<string, unknown>) || {};
+      const monsterKey = normalizeMonsterChoice(entry.shipChoice);
+      const stored = getMonsterProgressEntry(progress, monsterKey) || {};
+      let exp = Number(stored.exp ?? playerRow.exp ?? 0) || 0;
+      const level = Number(stored.level ?? 1) || 1;
+      const expToNext = Number(stored.expToNext) ?? expToNextLevel(level);
+
+      const percent = Math.max(0, Math.min(100, penaltyPercent)) / 100;
+      let lostExp = Math.floor(exp * percent);
+      let lostTokens = Math.floor(tokens * percent);
+      if (exp > 0 && lostExp === 0) lostExp = 1;
+      if (tokens > 0 && lostTokens === 0) lostTokens = 1;
+      const newExp = Math.max(0, exp - lostExp);
+      const newTokens = Math.max(0, tokens - lostTokens);
+
+      const nextResources = {
+        scrap: Number(resources.scrap ?? 0) || 0,
+        tokens: newTokens,
+      };
+      const nextProgress = {
+        ...progress,
+        [monsterKey]: { ...stored, exp: newExp },
+      };
+
+      await services.db.Player.update(
+        {
+          resources: nextResources,
+          monsterProgress: nextProgress as Record<string, { level?: number; exp?: number; expToNext?: number }>,
+        },
+        { where: { userId: user.id } }
+      );
+
+      entry.level = level;
       services.presence.setEntry(user.id, entry);
-      if (entry.sectorId) services.broadcast.broadcastPresence(entry.sectorId, services.presence);
+      services.broadcast.sendPlayerUpdate(user.id, {
+        level,
+        exp: newExp,
+        expToNext: expToNextLevel(level),
+        resources: nextResources,
+      }, services.presence);
+      services.broadcast.sendDeathUpdate(user.id, {
+        lostExp,
+        lostTokens,
+        expPercent: penaltyPercent,
+        tokenPercent: penaltyPercent,
+        killedBy: "Мобы",
+        killedByUserId: 0,
+      }, services.presence);
+    } catch (err) {
+      console.error("Failed to apply PvE death penalty:", err);
     }
   }
 
@@ -260,6 +336,7 @@ export class MessageHandlerService {
         posX: spawnX,
         posY: spawnY,
         rotation,
+        sectorId: sector.id,
         lastPositionAt: new Date(),
         lastHealthAt: new Date(),
         health: stats.maxHealth,
@@ -489,6 +566,7 @@ export class MessageHandlerService {
           posX: spawnX,
           posY: spawnY,
           rotation: 0,
+          sectorId: targetSector.id,
           lastPositionAt: new Date(),
         },
         { where: { userId } }
@@ -556,6 +634,7 @@ export class MessageHandlerService {
           posX: spawnX,
           posY: spawnY,
           rotation: 0,
+          sectorId: targetSector.id,
           lastPositionAt: new Date(),
         },
         { where: { userId } }
@@ -751,54 +830,59 @@ export class MessageHandlerService {
       enemy.health = Math.max(0, enemy.health - damage);
       if (enemy.health <= 0) {
         sector.world.enemies.delete(enemyId);
-        const expGain = Math.max(1, Math.floor((25 + enemy.level * 10) / 5));
-        const tokenAmount = tokensForMobLevel(enemy.level);
-        const tokenId = services.sectorService.spawnPickupPublic(
-          sector,
-          "tokens",
-          enemy.x,
-          enemy.y,
-          tokenAmount
-        );
-        services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);
+        const playerIsDead = presenceEntry?.isDead ?? false;
+        if (playerIsDead) {
+          services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);
+        } else {
+          const expGain = Math.max(1, Math.floor((25 + enemy.level * 10) / 5));
+          const tokenAmount = tokensForMobLevel(enemy.level);
+          const tokenId = services.sectorService.spawnPickupPublic(
+            sector,
+            "tokens",
+            enemy.x,
+            enemy.y,
+            tokenAmount
+          );
+          services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);
+          setTimeout(() => {
+            if (sector.world.pickups.delete(tokenId)) {
+              services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);
+            }
+          }, PICKUP_RESPAWN_MS);
+          try {
+            const progress = await services.player.awardPlayerExp(user.id, expGain, presenceEntry?.shipChoice, services.db);
+            if (progress) {
+              services.broadcast.sendPlayerUpdate(user.id, progress, services.presence);
+              if (presenceEntry) {
+                presenceEntry.level = progress.level;
+                presenceEntry.maxHealth = progress.maxHealth;
+                if (typeof progress.health === "number") presenceEntry.health = progress.health;
+              }
+              if (progress.previousLevel != null && progress.level > progress.previousLevel) {
+                try {
+                  const nickname = presenceEntry?.nickname ?? "Игрок";
+                  const chatEntry = {
+                    id: `level-${Date.now()}-${user.id}`,
+                    userId: user.id,
+                    nickname: "Система",
+                    text: `${nickname} достиг уровня ${progress.level}.`,
+                    createdAt: Date.now(),
+                  };
+                  await services.chat.persistChatMessage(chatEntry as Parameters<ChatService["persistChatMessage"]>[0], "global", "", services.db);
+                  services.broadcast.broadcastChat(chatEntry, "global", "", services.presence);
+                } catch {
+                  // ignore
+                }
+              }
+            }
+          } catch (err) {
+            console.error("Failed to award exp:", err);
+          }
+        }
         setTimeout(() => {
           services.sectorService.spawnEnemyPublic(sector);
           services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);
         }, ENEMY_RESPAWN_MS);
-        setTimeout(() => {
-          if (sector.world.pickups.delete(tokenId)) {
-            services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);
-          }
-        }, PICKUP_RESPAWN_MS);
-        try {
-          const progress = await services.player.awardPlayerExp(user.id, expGain, presenceEntry?.shipChoice, services.db);
-          if (progress) {
-            services.broadcast.sendPlayerUpdate(user.id, progress, services.presence);
-            if (presenceEntry) {
-              presenceEntry.level = progress.level;
-              presenceEntry.maxHealth = progress.maxHealth;
-              if (typeof progress.health === "number") presenceEntry.health = progress.health;
-            }
-            if (progress.previousLevel != null && progress.level > progress.previousLevel) {
-              try {
-                const nickname = presenceEntry?.nickname ?? "Игрок";
-                const chatEntry = {
-                  id: `level-${Date.now()}-${user.id}`,
-                  userId: user.id,
-                  nickname: "Система",
-                  text: `${nickname} достиг уровня ${progress.level}.`,
-                  createdAt: Date.now(),
-                };
-                await services.chat.persistChatMessage(chatEntry as Parameters<ChatService["persistChatMessage"]>[0], "global", "", services.db);
-                services.broadcast.broadcastChat(chatEntry, "global", "", services.presence);
-              } catch {
-                // ignore
-              }
-            }
-          }
-        } catch (err) {
-          console.error("Failed to award exp:", err);
-        }
       } else {
         services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);
       }
@@ -826,10 +910,34 @@ export class MessageHandlerService {
     const text = String(message.text ?? "").trim();
     if (!text) return;
     const safeText = text.slice(0, 240);
-    const scope = message.scope === "global" ? "global" : "sector";
+    const scope = message.scope === "private" ? "private" : message.scope === "global" ? "global" : "sector";
     const entry = services.presence.getEntry(user.id);
     const sectorId = entry?.sectorId ?? "unknown";
     const nickname = entry?.nickname ?? user.nickname ?? `Пилот ${user.id}`;
+
+    if (scope === "private") {
+      const targetUserId = Number(message.targetUserId);
+      if (!Number.isFinite(targetUserId) || targetUserId <= 0 || targetUserId === user.id) return;
+      if (!services.presence.hasClient(targetUserId)) return;
+      const chatEntry = {
+        id: `pm-${Date.now()}-${user.id}-${targetUserId}`,
+        userId: user.id,
+        nickname,
+        text: safeText,
+        createdAt: Date.now(),
+        targetUserId,
+      };
+      await services.chat.persistChatMessage(
+        chatEntry as Parameters<ChatService["persistChatMessage"]>[0],
+        "private",
+        "",
+        services.db,
+        targetUserId
+      );
+      services.broadcast.sendPrivateChat(chatEntry, user.id, targetUserId, services.presence);
+      return;
+    }
+
     const chatEntry = {
       id: `${Date.now()}-${user.id}`,
       userId: user.id,
@@ -844,6 +952,70 @@ export class MessageHandlerService {
       services.db
     );
     services.broadcast.broadcastChat(chatEntry, scope, sectorId, services.presence);
+  }
+
+  private async handleChatHistoryRequest(
+    user: ResolvedUser,
+    message: Record<string, unknown>,
+    socket: GameSocket,
+    services: HandlerServices
+  ): Promise<void> {
+    const scope = message.scope === "private" ? "private" : message.scope === "global" ? "global" : "sector";
+    if (scope === "private") {
+      const targetUserId = Number(message.targetUserId);
+      if (!Number.isFinite(targetUserId) || targetUserId <= 0) return;
+      const messages = await services.chat.loadChatHistory(
+        "private",
+        undefined,
+        services.db,
+        user.id,
+        targetUserId
+      );
+      try {
+        socket.send(
+          JSON.stringify({
+            type: "chat_history",
+            scope: "private",
+            targetUserId,
+            messages,
+          })
+        );
+      } catch {
+        // ignore
+      }
+      return;
+    }
+    if (scope === "global") {
+      const messages = await services.chat.loadChatHistory("global", undefined, services.db);
+      try {
+        socket.send(
+          JSON.stringify({
+            type: "chat_history",
+            scope: "global",
+            messages,
+          })
+        );
+      } catch {
+        // ignore
+      }
+      return;
+    }
+    const entry = services.presence.getEntry(user.id);
+    const sectorId = entry?.sectorId;
+    if (!sectorId) return;
+    const messages = await services.chat.loadChatHistory("sector", sectorId, services.db);
+    try {
+      socket.send(
+        JSON.stringify({
+          type: "chat_history",
+          scope: "sector",
+          sectorId,
+          messages,
+        })
+      );
+    } catch {
+      // ignore
+    }
   }
 
   private handleRequestExit(
@@ -931,13 +1103,16 @@ export class MessageHandlerService {
       [victimMonsterKey]: { ...storedProgress, exp, health: nextHealth },
     };
 
-    let death: { lostTokens: number; lostExp: number; killedBy: string; killedByUserId: number } | null = null;
+    let death: { lostTokens: number; lostExp: number; expPercent?: number; tokenPercent?: number; killedBy: string; killedByUserId: number } | null = null;
     const diedNow = currentHealth > 0 && nextHealth === 0;
     if (diedNow) {
-      const tokenPercent = (Math.max(1, Math.floor(Math.random() * 30) + 1)) / 100;
-      const expPercent = (Math.max(1, Math.floor(Math.random() * 30) + 1)) / 100;
-      let lostTokens = Math.floor(tokens * tokenPercent);
-      let lostExp = Math.floor(exp * expPercent);
+      const sectorGrade = sector?.grade ?? 1;
+      const basePercent = randInt(DEATH_PENALTY_BASE_PERCENT_MIN, DEATH_PENALTY_BASE_PERCENT_MAX);
+      const sectorPercent = PVP_DEATH_PENALTY_PERCENT_BY_GRADE[sectorGrade] ?? PVP_DEATH_PENALTY_PERCENT_BY_GRADE[1];
+      const penaltyPercent = Math.min(100, Math.floor((basePercent + sectorPercent) * PVP_DEATH_PENALTY_EXTRA_MULT));
+      const percent = Math.max(0, Math.min(100, penaltyPercent)) / 100;
+      let lostTokens = Math.floor(tokens * percent);
+      let lostExp = Math.floor(exp * percent);
       if (tokens > 0 && lostTokens === 0) lostTokens = 1;
       if (exp > 0 && lostExp === 0) lostExp = 1;
       resources = { ...resources, tokens: Math.max(0, tokens - lostTokens) };
@@ -945,6 +1120,8 @@ export class MessageHandlerService {
       death = {
         lostTokens,
         lostExp,
+        expPercent: penaltyPercent,
+        tokenPercent: penaltyPercent,
         killedBy: attacker.nickname ?? user.nickname ?? `Пилот ${user.id}`,
         killedByUserId: user.id,
       };

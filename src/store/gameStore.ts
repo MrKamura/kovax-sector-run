@@ -65,6 +65,8 @@ type GameStore = {
   deathInfo: {
     lostTokens: number;
     lostExp: number;
+    expPercent?: number;
+    tokenPercent?: number;
     killedBy?: string;
     killedByUserId?: number;
   } | null;
@@ -117,7 +119,7 @@ type GameStore = {
   pendingServerSkillEffect: { skillId: string; durationMs: number } | null;
   setPendingServerSkillEffect: (effect: { skillId: string; durationMs: number } | null) => void;
   clearDeath: () => void;
-  setDeathInfo: (info: { lostTokens: number; lostExp: number; killedBy?: string; killedByUserId?: number } | null) => void;
+  setDeathInfo: (info: { lostTokens: number; lostExp: number; expPercent?: number; tokenPercent?: number; killedBy?: string; killedByUserId?: number } | null) => void;
   clearLevelUpCelebration: () => void;
   requestRespawn: () => void;
   requestRespawnVengeance: (killedByUserId: number) => void;

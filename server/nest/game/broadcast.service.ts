@@ -63,7 +63,7 @@ export class BroadcastService {
   }
 
   broadcastChat(
-    message: { id: string; userId: number; nickname: string; text: string; createdAt: number },
+    message: { id: string; userId: number; nickname: string; text: string; createdAt: number; targetUserId?: number | null },
     scope: string,
     sectorId: string,
     presenceOverride?: PresenceService
@@ -87,6 +87,32 @@ export class BroadcastService {
         if (socketSectorId === sectorId) socket.send(payload);
       }
     }
+  }
+
+  sendPrivateChat(
+    message: { id: string; userId: number; nickname: string; text: string; createdAt: number; targetUserId?: number | null },
+    senderUserId: number,
+    targetUserId: number,
+    presenceOverride?: PresenceService
+  ): void {
+    const pres = presenceOverride ?? this.presence;
+    const payload = JSON.stringify({
+      type: "chat_message",
+      scope: "private",
+      sectorId: null,
+      targetUserId,
+      message,
+    });
+    const sendTo = (userId: number) => {
+      const sockets = pres?.getSockets(userId);
+      if (sockets) {
+        for (const socket of sockets) {
+          if (socket.readyState === 1) socket.send(payload);
+        }
+      }
+    };
+    sendTo(senderUserId);
+    if (targetUserId !== senderUserId) sendTo(targetUserId);
   }
 
   sendPlayerUpdate(userId: number, player: Record<string, unknown>, presenceOverride?: PresenceService): void {

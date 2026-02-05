@@ -88,6 +88,28 @@ let BroadcastService = class BroadcastService {
             }
         }
     }
+    sendPrivateChat(message, senderUserId, targetUserId, presenceOverride) {
+        const pres = presenceOverride ?? this.presence;
+        const payload = JSON.stringify({
+            type: "chat_message",
+            scope: "private",
+            sectorId: null,
+            targetUserId,
+            message,
+        });
+        const sendTo = (userId) => {
+            const sockets = pres?.getSockets(userId);
+            if (sockets) {
+                for (const socket of sockets) {
+                    if (socket.readyState === 1)
+                        socket.send(payload);
+                }
+            }
+        };
+        sendTo(senderUserId);
+        if (targetUserId !== senderUserId)
+            sendTo(targetUserId);
+    }
     sendPlayerUpdate(userId, player, presenceOverride) {
         const pres = presenceOverride ?? this.presence;
         const sockets = pres?.getSockets(userId);

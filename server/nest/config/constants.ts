@@ -29,6 +29,31 @@ export const FURY_DAMAGE_MULT = 1.5;
 export const VENGEANCE_DURATION_MS = 5 * 60 * 1000;
 export const VENGEANCE_DAMAGE_MULT = 1.15;
 export const BASE_PLAYER_MAX_HEALTH = 100;
+
+/** Base death penalty: random 30–50% (then add sector %). */
+export const DEATH_PENALTY_BASE_PERCENT_MIN = 30;
+export const DEATH_PENALTY_BASE_PERCENT_MAX = 50;
+
+/** Sector adds this % to base (grade 1–5). Total PvE = base + sector; PvP = (base + sector) * PVP_DEATH_PENALTY_EXTRA_MULT. */
+export const PVE_DEATH_PENALTY_PERCENT_BY_GRADE: Record<number, number> = {
+  1: 2,
+  2: 5,
+  3: 8,
+  4: 12,
+  5: 15,
+};
+
+/** Same sector modifier for PvP; PvP then applies extra mult on top. */
+export const PVP_DEATH_PENALTY_PERCENT_BY_GRADE: Record<number, number> = {
+  1: 2,
+  2: 5,
+  3: 8,
+  4: 12,
+  5: 15,
+};
+
+/** PvP death: total penalty is (base + sector) * this (50% more loss). */
+export const PVP_DEATH_PENALTY_EXTRA_MULT = 1.5;
 export const BASE_PLAYER_DAMAGE = 12;
 export const BASE_ENEMY_DAMAGE = 4;
 export const BASE_ENERGY_CAP = 10;

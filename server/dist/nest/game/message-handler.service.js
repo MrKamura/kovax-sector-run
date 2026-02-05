@@ -30,7 +30,7 @@ function startSpawnImmunityIfNeeded(entry, userId, services) {
 }
 /**
  * Handles all WebSocket message types from the game client.
- * Ported from server/index.js – each branch corresponds to message.type.
+ * Each branch corresponds to message.type.
  * When gateway passes resolved services (createApplicationContext), use them; else use injected.
  */
 let MessageHandlerService = class MessageHandlerService {
@@ -56,7 +56,7 @@ let MessageHandlerService = class MessageHandlerService {
             return;
         }
         if (message.type === "player_dead") {
-            this.handlePlayerDead(user, services);
+            await this.handlePlayerDead(user, services);
             return;
         }
         if (message.type === "respawn" || message.type === "respawn_vengeance") {
@@ -107,6 +107,10 @@ let MessageHandlerService = class MessageHandlerService {
             await this.handleChatMessage(user, message, services);
             return;
         }
+        if (message.type === "chat_history_request") {
+            await this.handleChatHistoryRequest(user, message, socket, services);
+            return;
+        }
         if (message.type === "request_exit") {
             this.handleRequestExit(user, socket, services);
             return;
@@ -153,14 +157,75 @@ let MessageHandlerService = class MessageHandlerService {
             void services.player.savePlayerPosition(next, services.db);
         }
     }
-    handlePlayerDead(user, services) {
+    async handlePlayerDead(user, services) {
         const entry = services.presence.getEntry(user.id);
-        if (entry && !entry.isDead) {
-            entry.isDead = true;
-            entry.updatedAt = Date.now();
+        if (!entry || entry.isDead)
+            return;
+        entry.isDead = true;
+        entry.updatedAt = Date.now();
+        services.presence.setEntry(user.id, entry);
+        if (entry.sectorId)
+            services.broadcast.broadcastPresence(entry.sectorId, services.presence);
+        const sector = entry.sectorId ? services.sectorService.sectors.get(entry.sectorId) : null;
+        const grade = sector?.grade ?? 1;
+        const basePercent = (0, utils_1.randInt)(constants_2.DEATH_PENALTY_BASE_PERCENT_MIN, constants_2.DEATH_PENALTY_BASE_PERCENT_MAX);
+        const sectorPercent = constants_2.PVE_DEATH_PENALTY_PERCENT_BY_GRADE[grade] ?? constants_2.PVE_DEATH_PENALTY_PERCENT_BY_GRADE[1];
+        const penaltyPercent = Math.min(100, basePercent + sectorPercent);
+        try {
+            const playerRow = await services.db.Player.findOne({
+                where: { userId: user.id },
+                attributes: ["exp", "expToNext", "resources", "monsterProgress"],
+            });
+            if (!playerRow)
+                return;
+            const resources = playerRow.resources || { scrap: 0, tokens: 0 };
+            const tokens = Number(resources.tokens ?? 0) || 0;
+            const progress = playerRow.monsterProgress || {};
+            const monsterKey = (0, utils_1.normalizeMonsterChoice)(entry.shipChoice);
+            const stored = (0, utils_1.getMonsterProgressEntry)(progress, monsterKey) || {};
+            let exp = Number(stored.exp ?? playerRow.exp ?? 0) || 0;
+            const level = Number(stored.level ?? 1) || 1;
+            const expToNext = Number(stored.expToNext) ?? (0, utils_1.expToNextLevel)(level);
+            const percent = Math.max(0, Math.min(100, penaltyPercent)) / 100;
+            let lostExp = Math.floor(exp * percent);
+            let lostTokens = Math.floor(tokens * percent);
+            if (exp > 0 && lostExp === 0)
+                lostExp = 1;
+            if (tokens > 0 && lostTokens === 0)
+                lostTokens = 1;
+            const newExp = Math.max(0, exp - lostExp);
+            const newTokens = Math.max(0, tokens - lostTokens);
+            const nextResources = {
+                scrap: Number(resources.scrap ?? 0) || 0,
+                tokens: newTokens,
+            };
+            const nextProgress = {
+                ...progress,
+                [monsterKey]: { ...stored, exp: newExp },
+            };
+            await services.db.Player.update({
+                resources: nextResources,
+                monsterProgress: nextProgress,
+            }, { where: { userId: user.id } });
+            entry.level = level;
             services.presence.setEntry(user.id, entry);
-            if (entry.sectorId)
-                services.broadcast.broadcastPresence(entry.sectorId, services.presence);
+            services.broadcast.sendPlayerUpdate(user.id, {
+                level,
+                exp: newExp,
+                expToNext: (0, utils_1.expToNextLevel)(level),
+                resources: nextResources,
+            }, services.presence);
+            services.broadcast.sendDeathUpdate(user.id, {
+                lostExp,
+                lostTokens,
+                expPercent: penaltyPercent,
+                tokenPercent: penaltyPercent,
+                killedBy: "Мобы",
+                killedByUserId: 0,
+            }, services.presence);
+        }
+        catch (err) {
+            console.error("Failed to apply PvE death penalty:", err);
         }
     }
     async handleRespawn(user, message, socket, services) {
@@ -180,9 +245,12 @@ let MessageHandlerService = class MessageHandlerService {
         let exp = 0;
         let expToNext = (0, utils_1.expToNextLevel)(level);
         let resources = { scrap: 0, tokens: 0 };
-        const expResult = await services.db.pool.query(`SELECT exp, "expToNext", resources, "monsterProgress" FROM players WHERE "userId" = $1`, [user.id]);
-        if (expResult.rowCount && expResult.rowCount > 0) {
-            const progress = expResult.rows[0].monsterProgress || {};
+        const expRow = await services.db.Player.findOne({
+            where: { userId: user.id },
+            attributes: ["exp", "expToNext", "resources", "monsterProgress"],
+        });
+        if (expRow) {
+            const progress = expRow.monsterProgress || {};
             const stored = (0, utils_1.getMonsterProgressEntry)(progress, monsterKey);
             if (stored) {
                 level = Number(stored.level) || level;
@@ -190,17 +258,15 @@ let MessageHandlerService = class MessageHandlerService {
                 expToNext = Number(stored.expToNext) || (0, utils_1.expToNextLevel)(level);
             }
             else {
-                exp = Number(expResult.rows[0].exp) || 0;
-                expToNext = Number(expResult.rows[0].expToNext) || (0, utils_1.expToNextLevel)(level);
+                exp = Number(expRow.exp) || 0;
+                expToNext = Number(expRow.expToNext) || (0, utils_1.expToNextLevel)(level);
             }
-            resources = expResult.rows[0].resources || resources;
+            resources = expRow.resources || resources;
         }
         const stats = (0, utils_1.playerStatsForLevel)(level, monsterKey);
         const energyCap = (0, utils_1.energyCapForLevel)(level);
         const nextResources = { scrap: energyCap, tokens: Number(resources.tokens || 0) };
-        const progress = expResult.rowCount && expResult.rowCount > 0
-            ? (expResult.rows[0].monsterProgress || {})
-            : {};
+        const progress = expRow ? (expRow.monsterProgress || {}) : {};
         const nextProgress = {
             ...progress,
             [monsterKey]: {
@@ -212,7 +278,18 @@ let MessageHandlerService = class MessageHandlerService {
                 health: stats.maxHealth,
             },
         };
-        await services.db.pool.query(`UPDATE players SET "posX" = $1, "posY" = $2, "rotation" = $3, "lastPositionAt" = NOW(), "lastHealthAt" = NOW(), health = $4, "maxHealth" = $5, resources = $6, "monsterProgress" = $7 WHERE "userId" = $8`, [spawnX, spawnY, rotation, stats.maxHealth, stats.maxHealth, nextResources, nextProgress, user.id]);
+        await services.db.Player.update({
+            posX: spawnX,
+            posY: spawnY,
+            rotation,
+            sectorId: sector.id,
+            lastPositionAt: new Date(),
+            lastHealthAt: new Date(),
+            health: stats.maxHealth,
+            maxHealth: stats.maxHealth,
+            resources: nextResources,
+            monsterProgress: nextProgress,
+        }, { where: { userId: user.id } });
         const invulnerableUntil = Date.now() + 10000;
         const zone = sector.world.safeZone;
         const initialInSafeZone = zone &&
@@ -360,11 +437,12 @@ let MessageHandlerService = class MessageHandlerService {
         const targetLevel = Number(hole.targetLevel);
         if (targetSectorId === entry.sectorId)
             return;
-        if (targetSectorId && Number.isFinite(targetLevel)) {
-            if (sector.level === 1 && targetLevel === 2 && (entry.level || 1) < 3)
-                return;
-        }
-        sector.world.blackHoles = sector.world.blackHoles.filter((h) => h.id !== hole.id);
+        const requiredLevel = constants_2.MIN_PLAYER_LEVEL_FOR_SECTOR_LEVEL[targetLevel] ?? 1;
+        const playerLevel = entry.level ?? 1;
+        if (playerLevel < requiredLevel)
+            return;
+        const holeId = hole.id;
+        sector.world.blackHoles = sector.world.blackHoles.filter((h) => h.id !== holeId);
         services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);
         if (targetSectorId && Number.isFinite(targetLevel)) {
             await this.movePlayerToSectorById(user.id, targetSectorId, targetLevel, services);
@@ -419,7 +497,13 @@ let MessageHandlerService = class MessageHandlerService {
             // ignore
         }
         try {
-            await services.db.pool.query(`UPDATE players SET "posX" = $1, "posY" = $2, "rotation" = $3, "lastPositionAt" = NOW() WHERE "userId" = $4`, [spawnX, spawnY, 0, userId]);
+            await services.db.Player.update({
+                posX: spawnX,
+                posY: spawnY,
+                rotation: 0,
+                sectorId: targetSector.id,
+                lastPositionAt: new Date(),
+            }, { where: { userId } });
         }
         catch (err) {
             console.error("Failed to persist sector travel:", err);
@@ -473,7 +557,13 @@ let MessageHandlerService = class MessageHandlerService {
             // ignore
         }
         try {
-            await services.db.pool.query(`UPDATE players SET "posX" = $1, "posY" = $2, "rotation" = $3, "lastPositionAt" = NOW() WHERE "userId" = $4`, [spawnX, spawnY, 0, userId]);
+            await services.db.Player.update({
+                posX: spawnX,
+                posY: spawnY,
+                rotation: 0,
+                sectorId: targetSector.id,
+                lastPositionAt: new Date(),
+            }, { where: { userId } });
         }
         catch (err) {
             console.error("Failed to persist sector travel:", err);
@@ -493,14 +583,17 @@ let MessageHandlerService = class MessageHandlerService {
             if (pickup.resource === "tokens" && (pickup.amount == null || pickup.amount > 0)) {
                 const addTokens = Math.max(1, Number(pickup.amount) || 1);
                 try {
-                    const res = await services.db.pool.query(`SELECT resources FROM players WHERE "userId" = $1`, [user.id]);
-                    if (res.rowCount && res.rowCount > 0) {
-                        const resources = res.rows[0].resources || { scrap: 0, tokens: 0 };
+                    const player = await services.db.Player.findOne({
+                        where: { userId: user.id },
+                        attributes: ["resources"],
+                    });
+                    if (player) {
+                        const resources = player.resources || { scrap: 0, tokens: 0 };
                         const nextResources = {
-                            ...resources,
+                            scrap: Number(resources.scrap ?? 0) || 0,
                             tokens: (Number(resources.tokens ?? 0) || 0) + addTokens,
                         };
-                        await services.db.pool.query(`UPDATE players SET resources = $1 WHERE "userId" = $2`, [nextResources, user.id]);
+                        await services.db.Player.update({ resources: nextResources }, { where: { userId: user.id } });
                         services.broadcast.sendPlayerUpdate(user.id, { resources: nextResources }, services.presence);
                     }
                 }
@@ -639,51 +732,57 @@ let MessageHandlerService = class MessageHandlerService {
             enemy.health = Math.max(0, enemy.health - damage);
             if (enemy.health <= 0) {
                 sector.world.enemies.delete(enemyId);
-                const expGain = Math.max(1, Math.floor((25 + enemy.level * 10) / 5));
-                const tokenAmount = (0, utils_1.tokensForMobLevel)(enemy.level);
-                const tokenId = services.sectorService.spawnPickupPublic(sector, "tokens", enemy.x, enemy.y, tokenAmount);
-                services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);
+                const playerIsDead = presenceEntry?.isDead ?? false;
+                if (playerIsDead) {
+                    services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);
+                }
+                else {
+                    const expGain = Math.max(1, Math.floor((25 + enemy.level * 10) / 5));
+                    const tokenAmount = (0, utils_1.tokensForMobLevel)(enemy.level);
+                    const tokenId = services.sectorService.spawnPickupPublic(sector, "tokens", enemy.x, enemy.y, tokenAmount);
+                    services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);
+                    setTimeout(() => {
+                        if (sector.world.pickups.delete(tokenId)) {
+                            services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);
+                        }
+                    }, constants_2.PICKUP_RESPAWN_MS);
+                    try {
+                        const progress = await services.player.awardPlayerExp(user.id, expGain, presenceEntry?.shipChoice, services.db);
+                        if (progress) {
+                            services.broadcast.sendPlayerUpdate(user.id, progress, services.presence);
+                            if (presenceEntry) {
+                                presenceEntry.level = progress.level;
+                                presenceEntry.maxHealth = progress.maxHealth;
+                                if (typeof progress.health === "number")
+                                    presenceEntry.health = progress.health;
+                            }
+                            if (progress.previousLevel != null && progress.level > progress.previousLevel) {
+                                try {
+                                    const nickname = presenceEntry?.nickname ?? "Игрок";
+                                    const chatEntry = {
+                                        id: `level-${Date.now()}-${user.id}`,
+                                        userId: user.id,
+                                        nickname: "Система",
+                                        text: `${nickname} достиг уровня ${progress.level}.`,
+                                        createdAt: Date.now(),
+                                    };
+                                    await services.chat.persistChatMessage(chatEntry, "global", "", services.db);
+                                    services.broadcast.broadcastChat(chatEntry, "global", "", services.presence);
+                                }
+                                catch {
+                                    // ignore
+                                }
+                            }
+                        }
+                    }
+                    catch (err) {
+                        console.error("Failed to award exp:", err);
+                    }
+                }
                 setTimeout(() => {
                     services.sectorService.spawnEnemyPublic(sector);
                     services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);
                 }, constants_2.ENEMY_RESPAWN_MS);
-                setTimeout(() => {
-                    if (sector.world.pickups.delete(tokenId)) {
-                        services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);
-                    }
-                }, constants_2.PICKUP_RESPAWN_MS);
-                try {
-                    const progress = await services.player.awardPlayerExp(user.id, expGain, presenceEntry?.shipChoice, services.db);
-                    if (progress) {
-                        services.broadcast.sendPlayerUpdate(user.id, progress, services.presence);
-                        if (presenceEntry) {
-                            presenceEntry.level = progress.level;
-                            presenceEntry.maxHealth = progress.maxHealth;
-                            if (typeof progress.health === "number")
-                                presenceEntry.health = progress.health;
-                        }
-                        if (progress.previousLevel != null && progress.level > progress.previousLevel) {
-                            try {
-                                const nickname = presenceEntry?.nickname ?? "Игрок";
-                                const chatEntry = {
-                                    id: `level-${Date.now()}-${user.id}`,
-                                    userId: user.id,
-                                    nickname: "Система",
-                                    text: `${nickname} достиг уровня ${progress.level}.`,
-                                    createdAt: Date.now(),
-                                };
-                                await services.chat.persistChatMessage(chatEntry, "global", "", services.db);
-                                services.broadcast.broadcastChat(chatEntry, "global", "", services.presence);
-                            }
-                            catch {
-                                // ignore
-                            }
-                        }
-                    }
-                }
-                catch (err) {
-                    console.error("Failed to award exp:", err);
-                }
             }
             else {
                 services.broadcast.broadcastWorld(sector.id, services.sectorService, services.presence);
@@ -703,10 +802,28 @@ let MessageHandlerService = class MessageHandlerService {
         if (!text)
             return;
         const safeText = text.slice(0, 240);
-        const scope = message.scope === "global" ? "global" : "sector";
+        const scope = message.scope === "private" ? "private" : message.scope === "global" ? "global" : "sector";
         const entry = services.presence.getEntry(user.id);
         const sectorId = entry?.sectorId ?? "unknown";
         const nickname = entry?.nickname ?? user.nickname ?? `Пилот ${user.id}`;
+        if (scope === "private") {
+            const targetUserId = Number(message.targetUserId);
+            if (!Number.isFinite(targetUserId) || targetUserId <= 0 || targetUserId === user.id)
+                return;
+            if (!services.presence.hasClient(targetUserId))
+                return;
+            const chatEntry = {
+                id: `pm-${Date.now()}-${user.id}-${targetUserId}`,
+                userId: user.id,
+                nickname,
+                text: safeText,
+                createdAt: Date.now(),
+                targetUserId,
+            };
+            await services.chat.persistChatMessage(chatEntry, "private", "", services.db, targetUserId);
+            services.broadcast.sendPrivateChat(chatEntry, user.id, targetUserId, services.presence);
+            return;
+        }
         const chatEntry = {
             id: `${Date.now()}-${user.id}`,
             userId: user.id,
@@ -716,6 +833,57 @@ let MessageHandlerService = class MessageHandlerService {
         };
         await services.chat.persistChatMessage(chatEntry, scope, sectorId, services.db);
         services.broadcast.broadcastChat(chatEntry, scope, sectorId, services.presence);
+    }
+    async handleChatHistoryRequest(user, message, socket, services) {
+        const scope = message.scope === "private" ? "private" : message.scope === "global" ? "global" : "sector";
+        if (scope === "private") {
+            const targetUserId = Number(message.targetUserId);
+            if (!Number.isFinite(targetUserId) || targetUserId <= 0)
+                return;
+            const messages = await services.chat.loadChatHistory("private", undefined, services.db, user.id, targetUserId);
+            try {
+                socket.send(JSON.stringify({
+                    type: "chat_history",
+                    scope: "private",
+                    targetUserId,
+                    messages,
+                }));
+            }
+            catch {
+                // ignore
+            }
+            return;
+        }
+        if (scope === "global") {
+            const messages = await services.chat.loadChatHistory("global", undefined, services.db);
+            try {
+                socket.send(JSON.stringify({
+                    type: "chat_history",
+                    scope: "global",
+                    messages,
+                }));
+            }
+            catch {
+                // ignore
+            }
+            return;
+        }
+        const entry = services.presence.getEntry(user.id);
+        const sectorId = entry?.sectorId;
+        if (!sectorId)
+            return;
+        const messages = await services.chat.loadChatHistory("sector", sectorId, services.db);
+        try {
+            socket.send(JSON.stringify({
+                type: "chat_history",
+                scope: "sector",
+                sectorId,
+                messages,
+            }));
+        }
+        catch {
+            // ignore
+        }
     }
     handleRequestExit(user, socket, services) {
         const entry = services.presence.getEntry(user.id);
@@ -777,18 +945,21 @@ let MessageHandlerService = class MessageHandlerService {
         }
         if (!damage)
             return;
-        const victimRow = await services.db.pool.query(`SELECT health, exp, resources, "monsterProgress" FROM players WHERE "userId" = $1`, [targetUserId]);
-        if (!victimRow.rowCount || victimRow.rowCount === 0)
+        const victimRow = await services.db.Player.findOne({
+            where: { userId: targetUserId },
+            attributes: ["health", "exp", "resources", "monsterProgress"],
+        });
+        if (!victimRow)
             return;
-        const storedHealth = Number(victimRow.rows[0].health);
+        const storedHealth = Number(victimRow.health);
         const currentHealth = Number.isFinite(storedHealth) ? storedHealth : Number(victim.health || 0);
         const victimInFury = victim.furyExpiresAt && victim.furyExpiresAt > now;
         const minHealth = victimInFury ? 1 : 0;
         const nextHealth = Math.max(minHealth, currentHealth - damage);
-        let resources = victimRow.rows[0].resources || { scrap: 0, tokens: 0 };
+        let resources = victimRow.resources || { scrap: 0, tokens: 0 };
         const tokens = Number(resources.tokens ?? 0) || 0;
-        let exp = Number(victimRow.rows[0].exp ?? 0) || 0;
-        const progress = victimRow.rows[0].monsterProgress || {};
+        let exp = Number(victimRow.exp ?? 0) || 0;
+        const progress = victimRow.monsterProgress || {};
         const victimMonsterKey = (0, utils_1.normalizeMonsterChoice)(victim.shipChoice);
         const storedProgress = (0, utils_1.getMonsterProgressEntry)(progress, victimMonsterKey) || {};
         const nextProgress = {
@@ -798,10 +969,13 @@ let MessageHandlerService = class MessageHandlerService {
         let death = null;
         const diedNow = currentHealth > 0 && nextHealth === 0;
         if (diedNow) {
-            const tokenPercent = (Math.max(1, Math.floor(Math.random() * 30) + 1)) / 100;
-            const expPercent = (Math.max(1, Math.floor(Math.random() * 30) + 1)) / 100;
-            let lostTokens = Math.floor(tokens * tokenPercent);
-            let lostExp = Math.floor(exp * expPercent);
+            const sectorGrade = sector?.grade ?? 1;
+            const basePercent = (0, utils_1.randInt)(constants_2.DEATH_PENALTY_BASE_PERCENT_MIN, constants_2.DEATH_PENALTY_BASE_PERCENT_MAX);
+            const sectorPercent = constants_2.PVP_DEATH_PENALTY_PERCENT_BY_GRADE[sectorGrade] ?? constants_2.PVP_DEATH_PENALTY_PERCENT_BY_GRADE[1];
+            const penaltyPercent = Math.min(100, Math.floor((basePercent + sectorPercent) * constants_2.PVP_DEATH_PENALTY_EXTRA_MULT));
+            const percent = Math.max(0, Math.min(100, penaltyPercent)) / 100;
+            let lostTokens = Math.floor(tokens * percent);
+            let lostExp = Math.floor(exp * percent);
             if (tokens > 0 && lostTokens === 0)
                 lostTokens = 1;
             if (exp > 0 && lostExp === 0)
@@ -811,6 +985,8 @@ let MessageHandlerService = class MessageHandlerService {
             death = {
                 lostTokens,
                 lostExp,
+                expPercent: penaltyPercent,
+                tokenPercent: penaltyPercent,
                 killedBy: attacker.nickname ?? user.nickname ?? `Пилот ${user.id}`,
                 killedByUserId: user.id,
             };
@@ -835,13 +1011,16 @@ let MessageHandlerService = class MessageHandlerService {
             }
             try {
                 if (lostTokens > 0) {
-                    const killerRow = await services.db.pool.query(`SELECT resources FROM players WHERE "userId" = $1`, [user.id]);
-                    const killerResources = killerRow.rowCount && killerRow.rows[0]
-                        ? (killerRow.rows[0].resources || { scrap: 0, tokens: 0 })
-                        : { scrap: 0, tokens: 0 };
-                    const killerTokens = Number(killerResources.tokens ?? 0) || 0;
-                    killerResources.tokens = killerTokens + lostTokens;
-                    await services.db.pool.query(`UPDATE players SET resources = $1 WHERE "userId" = $2`, [killerResources, user.id]);
+                    const killerRow = await services.db.Player.findOne({
+                        where: { userId: user.id },
+                        attributes: ["resources"],
+                    });
+                    const rawKiller = killerRow?.resources;
+                    const killerResources = {
+                        scrap: Number(rawKiller?.scrap ?? 0) || 0,
+                        tokens: (Number(rawKiller?.tokens ?? 0) || 0) + lostTokens,
+                    };
+                    await services.db.Player.update({ resources: killerResources }, { where: { userId: user.id } });
                     services.broadcast.sendPlayerUpdate(user.id, { resources: killerResources }, services.presence);
                 }
                 if (lostExp > 0) {
@@ -878,7 +1057,17 @@ let MessageHandlerService = class MessageHandlerService {
             victim.isDead = true;
         }
         try {
-            await services.db.pool.query(`UPDATE players SET health = $1, "lastHealthAt" = NOW(), exp = $2, resources = $3, "monsterProgress" = $4 WHERE "userId" = $5`, [nextHealth, exp, resources, nextProgress, targetUserId]);
+            const updateResources = {
+                scrap: Number(resources.scrap ?? 0) || 0,
+                tokens: Number(resources.tokens ?? 0) || 0,
+            };
+            await services.db.Player.update({
+                health: nextHealth,
+                lastHealthAt: new Date(),
+                exp,
+                resources: updateResources,
+                monsterProgress: nextProgress,
+            }, { where: { userId: targetUserId } });
         }
         catch (err) {
             console.error("Failed to persist PvP damage:", err);

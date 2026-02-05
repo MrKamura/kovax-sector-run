@@ -16,13 +16,16 @@ export const POST = async (request: Request) => {
   const body = await request.json().catch(() => null);
   const musicVolumeRaw = body?.musicVolume;
   const sfxVolumeRaw = body?.sfxVolume;
+  const chatPositionRaw = body?.chatPosition;
+  const chatSizeRaw = body?.chatSize;
+  const chatOpacityRaw = body?.chatOpacity;
 
   const nextMusic =
     musicVolumeRaw == null ? null : Math.max(0, Math.min(1, Number(musicVolumeRaw) || 0));
   const nextSfx =
     sfxVolumeRaw == null ? null : Math.max(0, Math.min(1, Number(sfxVolumeRaw) || 0));
 
-  if (nextMusic == null && nextSfx == null) {
+  if (nextMusic == null && nextSfx == null && chatPositionRaw == null && chatSizeRaw == null && chatOpacityRaw == null) {
     return NextResponse.json({ error: "No settings provided." }, { status: 400 });
   }
 
@@ -31,6 +34,28 @@ export const POST = async (request: Request) => {
   }
   if (nextSfx != null) {
     user.sfxVolume = nextSfx;
+  }
+  if (chatPositionRaw != null) {
+    const x = Number(chatPositionRaw.x);
+    const y = Number(chatPositionRaw.y);
+    if (Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0) {
+      user.chatPositionX = Math.round(x);
+      user.chatPositionY = Math.round(y);
+    }
+  }
+  if (chatSizeRaw != null) {
+    const width = Number(chatSizeRaw.width);
+    const height = Number(chatSizeRaw.height);
+    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+      user.chatWidth = Math.round(width);
+      user.chatHeight = Math.round(height);
+    }
+  }
+  if (chatOpacityRaw != null) {
+    const opacity = Number(chatOpacityRaw);
+    if (Number.isFinite(opacity) && opacity >= 0 && opacity <= 1) {
+      user.chatOpacity = opacity;
+    }
   }
   await user.save();
 
