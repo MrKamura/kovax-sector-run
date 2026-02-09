@@ -412,7 +412,7 @@ export class SectorService {
   }
 
   /** Returns a display name that is never undefined or "undefined*". Always use for snapshot/response. */
-  private getSectorDisplayName(sector: Sector): string {
+  getSectorDisplayName(sector: Sector): string {
     const raw = sector.name != null ? String(sector.name).trim() : "";
     const valid =
       raw.length > 0 &&

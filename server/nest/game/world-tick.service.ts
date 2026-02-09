@@ -12,6 +12,7 @@ import { SectorService } from "./sector.service";
 import { PresenceService } from "./presence.service";
 import { BroadcastService } from "./broadcast.service";
 import { PlayerService } from "./player.service";
+import { QuestService } from "./quest.service";
 import { normalizeMonsterChoice, getMonsterProgressEntry } from "./utils";
 import { DbService } from "./db.service";
 import type { MonsterProgressEntry } from "../models/player.model";
@@ -19,6 +20,7 @@ import type { MonsterProgressEntry } from "../models/player.model";
 export interface WorldTickState {
   lastWorldTick: number;
   lastVengeanceHuntedPushByUser: Map<number, number>;
+  lastQuestResetDate: string | null;
 }
 
 export interface WorldTickServices {
@@ -27,12 +29,14 @@ export interface WorldTickServices {
   broadcast: BroadcastService;
   player: PlayerService;
   db: DbService;
+  quest?: import("./quest.service").QuestService;
 }
 
 export function createWorldTickState(): WorldTickState {
   return {
     lastWorldTick: Date.now(),
     lastVengeanceHuntedPushByUser: new Map(),
+    lastQuestResetDate: null,
   };
 }
 
@@ -81,13 +85,31 @@ async function persistHealthForTick(
 }
 
 export function runWorldTick(services: WorldTickServices, state: WorldTickState): void {
-  const { sectorService, presence, broadcast, db } = services;
+  const { sectorService, presence, broadcast, db, quest } = services;
   try {
     if (!sectorService?.sectors) return;
 
     const now = Date.now();
     const dt = Math.min((now - state.lastWorldTick) / 1000, 0.2);
     state.lastWorldTick = now;
+
+    // Проверяем, наступила ли полночь для сброса квестов
+    if (quest) {
+      const currentDate = new Date();
+      const currentDateString = currentDate.toISOString().split("T")[0]; // YYYY-MM-DD
+      
+      // Сбрасываем квесты в 00:00 (проверяем изменение даты)
+      if (state.lastQuestResetDate !== currentDateString) {
+        const currentHour = currentDate.getHours();
+        const currentMinute = currentDate.getMinutes();
+        
+        // Сбрасываем только если прошла полночь (00:00-00:59)
+        if (currentHour === 0 && currentMinute < 60) {
+          void quest.resetExpiredQuests();
+          state.lastQuestResetDate = currentDateString;
+        }
+      }
+    }
 
     for (const sector of sectorService.sectors.values()) {
       sectorService.ensureWorldPopulationForSector(sector);
@@ -305,7 +327,8 @@ export class WorldTickService {
     private readonly presence: PresenceService,
     private readonly broadcast: BroadcastService,
     private readonly player: PlayerService,
-    private readonly db: DbService
+    private readonly db: DbService,
+    private readonly quest: QuestService
   ) {
     this.tick = this.tick.bind(this);
   }
@@ -319,6 +342,7 @@ export class WorldTickService {
         broadcast: this.broadcast,
         player: this.player,
         db: this.db,
+        quest: this.quest,
       },
       this.state
     );

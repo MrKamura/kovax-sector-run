@@ -11,6 +11,7 @@ import { BroadcastService } from "./broadcast.service";
 import { ChatService } from "./chat.service";
 import { MessageHandlerService } from "./message-handler.service";
 import { PlayerService } from "./player.service";
+import { QuestService } from "./quest.service";
 import {
   expToNextLevel,
   playerStatsForLevel,
@@ -60,6 +61,7 @@ export interface GatewayResolvedServices {
   chat: ChatService;
   messageHandler: MessageHandlerService;
   player: PlayerService;
+  quest: QuestService;
 }
 
 @Injectable()
@@ -74,7 +76,8 @@ export class GameGateway {
     private readonly broadcast: BroadcastService,
     private readonly chat: ChatService,
     private readonly messageHandler: MessageHandlerService,
-    private readonly player: PlayerService
+    private readonly player: PlayerService,
+    private readonly quest: QuestService
   ) {}
 
   /** When using createApplicationContext, Nest may not inject deps; pass resolved services from bootstrap. */
@@ -112,6 +115,7 @@ export class GameGateway {
     const chat = this.resolved?.chat ?? this.chat;
     const messageHandler = this.resolved?.messageHandler ?? this.messageHandler;
     const player = this.resolved?.player ?? this.player;
+    const quest = this.resolved?.quest ?? this.quest;
 
     if (!db) {
       ws.close(1008, "Unauthorized");
@@ -225,6 +229,15 @@ export class GameGateway {
       zone.expiresAt > Date.now() &&
       sectorService.isInsideSafeZone(zone, boundedX, boundedY);
 
+    // Проверяем, есть ли активный PvP квест
+    let hasPvpQuest = false;
+    try {
+      const allActiveQuests = await quest.getAllActiveQuests(user.id, assignedSector.id);
+      hasPvpQuest = allActiveQuests.some(q => q.questType === "pvp_kills");
+    } catch {
+      // ignore
+    }
+
     const entry: PresenceEntry = {
       userId: user.id,
       nickname: user.nickname,
@@ -242,6 +255,7 @@ export class GameGateway {
       isDead: existingPresence?.isDead ?? health <= 0,
       sectorId: assignedSector.id,
       wasInSafeZone: !!initialInSafeZone,
+      hasPvpQuest,
       vengeanceTargetUserId: existingPresence?.vengeanceTargetUserId,
       vengeanceExpiresAt: existingPresence?.vengeanceExpiresAt,
       huntedByUserId: existingPresence?.huntedByUserId,
@@ -323,6 +337,40 @@ export class GameGateway {
         messages: await chat.loadChatHistory("global", undefined, db),
       })
     );
+
+    // Проверяем информацию о квестах для сектора
+    try {
+      const allActiveQuests = await quest.getAllActiveQuests(user.id, assignedSector.id);
+      const sectorName = sectorService.getSectorDisplayName(assignedSector);
+      
+      if (allActiveQuests.length > 0) {
+        // Отправляем все активные квесты
+        for (const activeQuest of allActiveQuests) {
+          const questWithName = { ...activeQuest, sectorName };
+          ws.send(JSON.stringify({ 
+            type: "quest_progress", 
+            quest: questWithName,
+            sectorId: assignedSector.id,
+            sectorName: sectorName,
+            available: true,
+          }));
+        }
+      } else {
+        // Если активных квестов нет, отправляем информацию о секторе
+        const questInfo = await quest.getQuestInfo(user.id, assignedSector.id);
+        ws.send(JSON.stringify({
+          type: "quest_progress",
+          quest: null,
+          available: questInfo.available,
+          sectorId: assignedSector.id,
+          sectorName: sectorName,
+          completedAt: questInfo.completedAt,
+          timeUntilReset: questInfo.timeUntilReset,
+        }));
+      }
+    } catch (err) {
+      console.error("Failed to load quests:", err);
+    }
 
     ws.on("message", async (data: Buffer) => {
       try {

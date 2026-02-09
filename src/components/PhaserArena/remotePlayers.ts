@@ -21,6 +21,7 @@ export type RemoteSnapshotEntry = {
   nickname: string | null;
   shipChoice: string | null;
   level: number;
+  hasPvpQuest?: boolean;
 };
 
 export type QueueRemoteSnapshotEntry = {
@@ -36,6 +37,7 @@ export type QueueRemoteSnapshotEntry = {
   invulnerableUntil?: number;
   firingAt: number | null;
   updatedAt: number;
+  hasPvpQuest?: boolean;
 };
 
 export type UpsertRemotePlayerEntry = {
@@ -52,6 +54,7 @@ export type UpsertRemotePlayerEntry = {
   firingAt: number | null;
   huntedExpiresAt?: number;
   isHunted?: boolean;
+  hasPvpQuest?: boolean;
 };
 
 export type RemotePlayerEntry = {
@@ -139,10 +142,11 @@ export function queueRemoteSnapshot(
     invulnerableUntil: Number(entry.invulnerableUntil ?? 0),
     firingAt: entry.firingAt,
     updatedAt: entry.updatedAt,
-    nickname: entry.nickname,
-    shipChoice: entry.shipChoice,
-    level: entry.level ?? 1,
-  });
+      nickname: entry.nickname,
+      shipChoice: entry.shipChoice,
+      level: entry.level ?? 1,
+      hasPvpQuest: entry.hasPvpQuest,
+    });
   buffer.sort((a, b) => a.updatedAt - b.updatedAt);
   while (buffer.length > 20) {
     buffer.shift();
@@ -165,7 +169,8 @@ export function upsertRemotePlayer(
   const isHunted =
     entry.isHunted === true ||
     (typeof entry.huntedExpiresAt === "number" && entry.huntedExpiresAt > Date.now());
-  const nameColor = isHunted ? "#e74c3c" : "#b9c4d6";
+  // Красный цвет для игроков с активным PvP квестом или hunted статусом
+  const nameColor = (isHunted || entry.hasPvpQuest === true) ? "#e74c3c" : "#b9c4d6";
   const existing = context.otherPlayers.get(entry.userId);
   if (!existing) {
     const sprite = context.physics.add
@@ -203,8 +208,13 @@ export function upsertRemotePlayer(
     context.updateRemoteHealthBar(healthBar, sprite, entry.health, entry.maxHealth);
   } else {
     existing.nameText.setText(context.formatPilotName(entry.nickname, entry.level));
-    existing.nameText.setColor(nameColor);
     existing.huntedExpiresAt = entry.huntedExpiresAt;
+    // Обновляем цвет ника на основе PvP квеста или hunted статуса
+    const isHunted =
+      entry.isHunted === true ||
+      (typeof entry.huntedExpiresAt === "number" && entry.huntedExpiresAt > Date.now());
+    const updatedNameColor = (isHunted || entry.hasPvpQuest === true) ? "#e74c3c" : "#b9c4d6";
+    existing.nameText.setColor(updatedNameColor);
     const expectedTexture = getShipTexture(entry.shipChoice);
     if (existing.sprite.texture.key !== expectedTexture) {
       existing.sprite.setTexture(expectedTexture);
@@ -272,6 +282,11 @@ export function interpolateRemotePlayers(
     const nickname = snapshotB?.nickname ?? snapshotA.nickname ?? "Пилот";
     const level = snapshotB?.level ?? snapshotA.level ?? 1;
     remote.nameText.setText(context.formatPilotName(nickname, level));
+    // Обновляем цвет ника на основе PvP квеста или hunted статуса
+    const hasPvpQuest = snapshotB?.hasPvpQuest ?? snapshotA.hasPvpQuest ?? false;
+    const isHunted = remote.huntedExpiresAt !== undefined && remote.huntedExpiresAt > Date.now();
+    const nameColor = (isHunted || hasPvpQuest) ? "#e74c3c" : "#b9c4d6";
+    remote.nameText.setColor(nameColor);
     context.updateRemoteHealthBar(remote.healthBar, remote.sprite, health, maxHealth);
   }
 }

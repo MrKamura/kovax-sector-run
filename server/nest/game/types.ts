@@ -27,6 +27,7 @@ export interface PresenceEntry {
   healingExpiresAt?: number;
   lastHealingRegenAt?: number;
   movementSpeedMultiplier?: number;
+  hasPvpQuest?: boolean; // Флаг, что у игрока активен PvP квест
 }
 
 export interface SectorConfig {

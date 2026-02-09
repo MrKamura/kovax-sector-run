@@ -118,9 +118,8 @@ export class PlayerService {
     };
     let nextResources = (player.resources as { scrap: number; tokens: number }) || { scrap: 0, tokens: 0 };
     const BASE_ENERGY_CAP = 10;
-    const ENERGY_CAP_PER_LEVEL = 3;
     if (leveledUp) {
-      const energyCap = BASE_ENERGY_CAP + Math.max(0, level - 1) * ENERGY_CAP_PER_LEVEL;
+      const energyCap = BASE_ENERGY_CAP + Math.floor(Math.max(0, level - 1) / 3);
       nextResources = {
         scrap: energyCap,
         tokens: Number(nextResources.tokens ?? 0) || 0,

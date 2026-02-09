@@ -58,7 +58,7 @@ const enemyStatsForLevel = (level) => ({
     damage: constants_1.BASE_ENEMY_DAMAGE + Math.max(0, level - 1) * 1,
 });
 exports.enemyStatsForLevel = enemyStatsForLevel;
-const energyCapForLevel = (level) => constants_1.BASE_ENERGY_CAP + Math.max(0, level - 1) * constants_1.ENERGY_CAP_PER_LEVEL;
+const energyCapForLevel = (level) => constants_1.BASE_ENERGY_CAP + Math.floor(Math.max(0, level - 1) / 3);
 exports.energyCapForLevel = energyCapForLevel;
 const tokensForMobLevel = (level) => {
     const L = Math.max(1, Number(level) || 1);

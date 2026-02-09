@@ -17,6 +17,7 @@ export type PresenceEntry = {
   updatedAt: number;
   huntedExpiresAt?: number;
   isHunted?: boolean;
+  hasPvpQuest?: boolean;
 };
 
 /** Context required to handle presence updates (other players list). */

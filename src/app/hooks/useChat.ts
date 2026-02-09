@@ -264,6 +264,8 @@ export function useChat(
     (privateTargetUserId?: number, textOverride?: string) => {
       const text = (textOverride != null ? textOverride : chatInput).trim();
       if (!text) return;
+      // Запрещаем отправку сообщений в систему
+      if (chatScope === "system") return;
       const socket = chatSocketRef.current;
       if (!socket || socket.readyState !== WebSocket.OPEN) return;
       if (chatScope === "private" || privateTargetUserId != null) {

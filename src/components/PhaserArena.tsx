@@ -8,10 +8,7 @@ import {
 } from "./PhaserArena/constants";
 import type { PhaserModule, WorldState } from "./PhaserArena/types";
 import { MONSTER_DEFS } from "./PhaserArena/monsterDefs";
-import {
-  formatSectorDisplayName,
-  monsterNameColor,
-} from "./PhaserArena/utils";
+import { formatSectorDisplayName, monsterNameColor } from "./PhaserArena/utils";
 import { ASSETS } from "./PhaserArena/assets";
 import {
   getShipTexture,
@@ -159,17 +156,23 @@ const createSpaceArenaScene = (
       }
     >();
     private blackHoleTooltip?: Phaser.GameObjects.Text;
-    private hoveredBlackHoleData: NonNullable<WorldState["blackHoles"]>[number] | null = null;
+    private hoveredBlackHoleData:
+      | NonNullable<WorldState["blackHoles"]>[number]
+      | null = null;
     private safeZoneId?: string;
     private safeZoneMovesAt = 0; // server timestamp (ms) when zone will relocate
     private safeZoneGraphics?: Phaser.GameObjects.Graphics;
-    private levelUpEmitters: Phaser.GameObjects.Particles.ParticleEmitter[] = [];
+    private levelUpEmitters: Phaser.GameObjects.Particles.ParticleEmitter[] =
+      [];
     private furyFlameEmitter?: Phaser.GameObjects.Particles.ParticleEmitter;
     private safeZoneTitleLabel?: Phaser.GameObjects.Text;
     private safeZoneLabel?: Phaser.GameObjects.Text;
     private safeZoneTooltip?: Phaser.GameObjects.Text;
     private lastWorldSafeZone: WorldState["safeZone"] = null;
-    private gravityPitContainers = new Map<string, Phaser.GameObjects.Container>();
+    private gravityPitContainers = new Map<
+      string,
+      Phaser.GameObjects.Container
+    >();
     private lastWorldGravityPits: GravityPitNormalized[] = [];
     private lowHealthVignette?: Phaser.GameObjects.Graphics;
     private lastLowHealthShakeAt = 0;
@@ -246,16 +249,16 @@ const createSpaceArenaScene = (
 
       this.add
         .text(24, 16, "Космический сектор", {
-        fontFamily: "Arial",
-        fontSize: "16px",
-        color: "#d9c7a7",
+          fontFamily: "Arial",
+          fontSize: "16px",
+          color: "#d9c7a7",
         })
         .setScrollFactor(0);
       this.add
         .text(24, 38, "WASD/стрелки — маневрирование", {
-        fontFamily: "Arial",
-        fontSize: "12px",
-        color: "#97a0ae",
+          fontFamily: "Arial",
+          fontSize: "12px",
+          color: "#97a0ae",
         })
         .setScrollFactor(0);
       this.fpsText = this.add
@@ -361,7 +364,9 @@ const createSpaceArenaScene = (
       this.playerSpeedMultiplier =
         getShipSpeedMultiplier(user?.shipChoice) *
         getLevelSpeedMultiplier(useGameStore.getState().player?.level ?? 1);
-      this.appliedLevelScale = getLevelScale(useGameStore.getState().player?.level ?? 1);
+      this.appliedLevelScale = getLevelScale(
+        useGameStore.getState().player?.level ?? 1
+      );
       this.aimRotation = spawnRotation;
       this.player.setRotation(
         spawnRotation + getSkinRotationOffset(user?.shipChoice)
@@ -406,7 +411,9 @@ const createSpaceArenaScene = (
           Phaser.Input.Keyboard.KeyCodes.EIGHT,
           Phaser.Input.Keyboard.KeyCodes.NINE,
         ];
-        this.skillKeys = keyCodes.map((code) => this.input.keyboard!.addKey(code));
+        this.skillKeys = keyCodes.map((code) =>
+          this.input.keyboard!.addKey(code)
+        );
       }
 
       this.lasers = this.physics.add.group();
@@ -441,43 +448,37 @@ const createSpaceArenaScene = (
         }
       });
 
-      this.physics.add.overlap(
-        this.player,
-        this.pickups,
-        (_player, pickup) => {
-          // While immune, you cannot collect items.
-          if (this.isInvulnerable()) {
-            return;
+      this.physics.add.overlap(this.player, this.pickups, (_player, pickup) => {
+        // While immune, you cannot collect items.
+        if (this.isInvulnerable()) {
+          return;
+        }
+        const pickupSprite = pickup as Phaser.Physics.Arcade.Sprite;
+        if (pickupSprite.getData("collected")) {
+          return;
+        }
+        pickupSprite.setData("collected", true);
+        const resource = pickupSprite.getData("resource") as "scrap" | "tokens";
+        const pickupId = pickupSprite.getData("id") as number | undefined;
+        pickupSprite.destroy();
+        this.audioManager.playPickupSound();
+        if (resource === "tokens") {
+          if (pickupId != null) {
+            this.sendWorldAction("pickup_collect", {
+              pickupId,
+              resource,
+            });
           }
-          const pickupSprite = pickup as Phaser.Physics.Arcade.Sprite;
-          if (pickupSprite.getData("collected")) {
-            return;
-          }
-          pickupSprite.setData("collected", true);
-          const resource = pickupSprite.getData("resource") as
-            | "scrap"
-            | "tokens";
-          const pickupId = pickupSprite.getData("id") as number | undefined;
-          pickupSprite.destroy();
-          this.audioManager.playPickupSound();
-          if (resource === "tokens") {
-            if (pickupId != null) {
-              this.sendWorldAction("pickup_collect", {
-                pickupId,
-                resource,
-              });
-            }
-          } else {
-            void collectResource(resource);
-            if (pickupId != null) {
-              this.sendWorldAction("pickup_collect", {
-                pickupId,
-                resource,
-              });
-            }
+        } else {
+          void collectResource(resource);
+          if (pickupId != null) {
+            this.sendWorldAction("pickup_collect", {
+              pickupId,
+              resource,
+            });
           }
         }
-      );
+      });
 
       this.physics.add.collider(this.player, this.asteroids);
       // Asteroids are obstacles only (no damage).
@@ -500,41 +501,50 @@ const createSpaceArenaScene = (
           (enemySprite.getData("damage") as number | undefined) ?? 8;
         this.applyPlayerDamage(enemyDamage, damagePlayer);
       });
-      this.physics.add.collider(this.lasers, this.asteroids, (_laser, asteroid) => {
-        const laser = _laser as Phaser.Physics.Arcade.Image;
-        laser.destroy();
-        const asteroidSprite = asteroid as Phaser.Physics.Arcade.Sprite;
-        const asteroidId = asteroidSprite.getData("id") as number | undefined;
-        if (asteroidId != null) {
-          this.sendWorldAction("asteroid_destroy", { asteroidId });
+      this.physics.add.collider(
+        this.lasers,
+        this.asteroids,
+        (_laser, asteroid) => {
+          const laser = _laser as Phaser.Physics.Arcade.Image;
+          laser.destroy();
+          const asteroidSprite = asteroid as Phaser.Physics.Arcade.Sprite;
+          const asteroidId = asteroidSprite.getData("id") as number | undefined;
+          if (asteroidId != null) {
+            this.sendWorldAction("asteroid_destroy", { asteroidId });
+          }
+          this.audioManager.playExplosionSound();
         }
-        this.audioManager.playExplosionSound();
-      });
+      );
       this.physics.add.overlap(this.lasers, this.enemies, (_laser, enemy) => {
         const laser = _laser as Phaser.Physics.Arcade.Image;
         laser.destroy();
         const enemySprite = enemy as Phaser.Physics.Arcade.Sprite;
         const enemyId = enemySprite.getData("id") as number | undefined;
         if (enemyId != null) {
-          const damage =
-            useGameStore.getState().player?.damage ?? 18;
+          const damage = useGameStore.getState().player?.damage ?? 18;
           this.sendWorldAction("enemy_hit", { enemyId, damage });
         }
         this.audioManager.playEnemyHitSound();
       });
 
       // PvP: local lasers can hit other players (server validates sector/immunity/damage).
-      this.physics.add.overlap(this.lasers, this.otherPlayersGroup, (_laser, other) => {
-        const laser = _laser as Phaser.Physics.Arcade.Image;
-        laser.destroy();
-        const otherSprite = other as Phaser.Physics.Arcade.Sprite;
-        const targetUserId = otherSprite.getData("userId") as number | undefined;
-        if (targetUserId != null) {
-          const damage = useGameStore.getState().player?.damage ?? 12;
-          this.sendWorldAction("player_hit", { targetUserId, damage });
+      this.physics.add.overlap(
+        this.lasers,
+        this.otherPlayersGroup,
+        (_laser, other) => {
+          const laser = _laser as Phaser.Physics.Arcade.Image;
+          laser.destroy();
+          const otherSprite = other as Phaser.Physics.Arcade.Sprite;
+          const targetUserId = otherSprite.getData("userId") as
+            | number
+            | undefined;
+          if (targetUserId != null) {
+            const damage = useGameStore.getState().player?.damage ?? 12;
+            this.sendWorldAction("player_hit", { targetUserId, damage });
+          }
+          this.audioManager.playEnemyHitSound();
         }
-        this.audioManager.playEnemyHitSound();
-      });
+      );
 
       // Remote lasers (from other players) stop when they hit the local player — no fly-through.
       this.physics.add.overlap(this.remoteLasers, this.player, (_laser) => {
@@ -561,7 +571,9 @@ const createSpaceArenaScene = (
       const barWidth = 140;
       const barHeight = 8;
       const ratio = Phaser.Math.Clamp(this.health / this.maxHealth, 0, 1);
-      const isLowHealth = this.maxHealth > 0 && this.health / this.maxHealth < SpaceArenaScene.LOW_HEALTH_THRESHOLD;
+      const isLowHealth =
+        this.maxHealth > 0 &&
+        this.health / this.maxHealth < SpaceArenaScene.LOW_HEALTH_THRESHOLD;
       const fillColor = isLowHealth ? 0xcc3333 : 0x35d06a;
       const strokeColor = isLowHealth ? 0x8b2020 : 0x0b1a0f;
       const x = -barWidth / 2;
@@ -581,7 +593,10 @@ const createSpaceArenaScene = (
       this.healthBar.strokeRoundedRect(x, y, barWidth, barHeight, 4);
     }
 
-    private applyPlayerDamage(amount: number, damagePlayerAction: (amount: number) => void) {
+    private applyPlayerDamage(
+      amount: number,
+      damagePlayerAction: (amount: number) => void
+    ) {
       if (this.isInvulnerable()) {
         return;
       }
@@ -642,7 +657,10 @@ const createSpaceArenaScene = (
       });
     }
 
-    private triggerLevelUpEffects(_celebration: { level: number; previousLevel: number }) {
+    private triggerLevelUpEffects(_celebration: {
+      level: number;
+      previousLevel: number;
+    }) {
       this.audioManager.playLevelUpFanfare();
       const cx = this.cameras.main.scrollX + this.cameras.main.width / 2;
       const cy = this.cameras.main.scrollY + this.cameras.main.height / 2;
@@ -731,6 +749,7 @@ const createSpaceArenaScene = (
       color: string;
       width: number;
       height: number;
+      pvpAllowed?: boolean;
       deathPenaltyPveMin?: number;
       deathPenaltyPveMax?: number;
       deathPenaltyPvpMin?: number;
@@ -739,6 +758,7 @@ const createSpaceArenaScene = (
       if (!sector) {
         return;
       }
+      useGameStore.getState().setCurrentSectorPvpAllowed(sector.pvpAllowed ?? false);
       const level = Math.max(1, Math.min(5, sector.level ?? 1));
       const grade = Math.max(1, Math.min(5, sector.grade ?? level));
       this.audioManager.switchMainMusicToSectorLevel(grade);
@@ -766,7 +786,12 @@ const createSpaceArenaScene = (
             : "";
         const deathLine =
           pveRange || pvpRange
-            ? `\nПотеря при смерти: ${[pveRange && `мобы ${pveRange}`, pvpRange && `игроки ${pvpRange}`].filter(Boolean).join(", ")}`
+            ? `\nПотеря при смерти: ${[
+                pveRange && `мобы ${pveRange}`,
+                pvpRange && `игроки ${pvpRange}`,
+              ]
+                .filter(Boolean)
+                .join(", ")}`
             : "";
         this.sectorText.setText(
           `Сектор: ${name}${titlePart} (ур. ${level})${deathLine}`
@@ -775,8 +800,23 @@ const createSpaceArenaScene = (
       }
       if (this.currentSectorId !== sector.id) {
         this.appliedServerPosition = false;
+        // При переходе в новый сектор очищаем информацию о квесте старого сектора
+        // Сервер должен отправить новую информацию через quest_progress
+        console.log(
+          "[Sector] Sector changed:",
+          this.currentSectorId,
+          "->",
+          sector.id
+        );
+        // Очищаем все квесты при смене сектора (сервер отправит новые через quest_progress)
+        console.log("[Sector] Clearing all quests for sector change");
+        useGameStore.getState().setCurrentSectorQuestInfo(null);
+        useGameStore.getState().setActiveQuests([]);
+        useGameStore.getState().setDailyQuest(null);
+        useGameStore.getState().setCurrentSectorPvpAllowed(false); // будет установлено при следующем world sync
       }
       this.currentSectorId = sector.id;
+      useGameStore.getState().setCurrentSectorId(sector.id);
     }
 
     private applyPlayerMonsterChoice(choice: string | null | undefined) {
@@ -813,6 +853,17 @@ const createSpaceArenaScene = (
         {
           setSocket: (ws) => {
             this.socket = ws as WebSocket;
+            // Экспортируем socket для использования в других компонентах
+            if (typeof window !== "undefined") {
+              // Используем динамический импорт для избежания циклических зависимостей
+              import("@/app/components/QuestButton")
+                .then((module) => {
+                  module.setGlobalSocket(ws as WebSocket);
+                })
+                .catch(() => {
+                  // ignore если модуль еще не загружен
+                });
+            }
           },
           setInvulnerableUntil: (ms) => {
             this.invulnerableUntil = ms;
@@ -823,7 +874,8 @@ const createSpaceArenaScene = (
         {
           spawnImmunityMs: SPAWN_IMMUNITY_UNTIL_FIRST_ACTION,
           getSocketUrl: () => {
-            const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+            const protocol =
+              window.location.protocol === "https:" ? "wss" : "ws";
             return `${protocol}://${window.location.host}/ws`;
           },
         }
@@ -832,7 +884,10 @@ const createSpaceArenaScene = (
 
     private handleSocketMessage(payload: Record<string, unknown>) {
       const msg = parseSocketMessage(payload, (err) => {
-        if (typeof process !== "undefined" && process.env.NODE_ENV === "development") {
+        if (
+          typeof process !== "undefined" &&
+          process.env.NODE_ENV === "development"
+        ) {
           console.warn("[Socket] Invalid message:", err.flatten());
         }
       });
@@ -840,10 +895,18 @@ const createSpaceArenaScene = (
 
       switch (msg.type) {
         case "presence":
-          handlePresencePayloadFromModule(this as unknown as PresencePayloadContext, msg.players, msg.serverTime);
+          handlePresencePayloadFromModule(
+            this as unknown as PresencePayloadContext,
+            msg.players,
+            msg.serverTime
+          );
           break;
         case "world":
-          handleWorldPayloadFromModule(this as unknown as WorldPayloadContext, msg.world, msg.serverTime);
+          handleWorldPayloadFromModule(
+            this as unknown as WorldPayloadContext,
+            msg.world,
+            msg.serverTime
+          );
           break;
         case "self": {
           this.invulnerableUntil = Number(msg.invulnerableUntil ?? 0);
@@ -910,7 +973,9 @@ const createSpaceArenaScene = (
         case "sector_kill_flash": {
           const killerName = String(msg.killerName ?? "").trim() || "Пилот";
           const victimName = String(msg.victimName ?? "").trim() || "Пилот";
-          useGameStore.getState().setSectorKillFlash({ killerName, victimName });
+          useGameStore
+            .getState()
+            .setSectorKillFlash({ killerName, victimName });
           this.time.delayedCall(2000, () => {
             useGameStore.getState().setSectorKillFlash(null);
           });
@@ -930,13 +995,319 @@ const createSpaceArenaScene = (
             Number.isFinite(attackerY)
           ) {
             this.lastCorrectiveShotByAttacker.set(attackerUserId, Date.now());
-            const wrongLaser = this.lastRemoteLaserByShooter.get(attackerUserId);
-            if (wrongLaser && Date.now() - wrongLaser.at < 800 && wrongLaser.laser.active) {
+            const wrongLaser =
+              this.lastRemoteLaserByShooter.get(attackerUserId);
+            if (
+              wrongLaser &&
+              Date.now() - wrongLaser.at < 800 &&
+              wrongLaser.laser.active
+            ) {
               wrongLaser.laser.destroy();
             }
             this.lastRemoteLaserByShooter.delete(attackerUserId);
             this.spawnCorrectiveLaser(attackerX, attackerY, attackerUserId);
           }
+          break;
+        }
+        case "quest_progress": {
+          console.log(
+            "[Socket] quest_progress received:",
+            msg.quest,
+            msg.error,
+            msg.available,
+            msg.sectorId
+          );
+          const quest = msg.quest;
+
+          // Уведомление о завершении квеста (активные квесты с completedAt мы не добавляем в список, поэтому показываем здесь)
+          if (quest && quest.completedAt != null && quest.completedAt !== 0) {
+            const exp = typeof quest.rewardExp === "number" ? quest.rewardExp : 0;
+            const tokens = typeof quest.rewardTokens === "number" ? quest.rewardTokens : 0;
+            useGameStore.getState().setQuestCompleteReward({ exp, tokens });
+          }
+
+          // Если есть информация о секторе (даже когда quest: null), сохраняем её только для текущего сектора
+          const currentSectorId = useGameStore.getState().currentSectorId;
+          const isForCurrentSector = currentSectorId === null || currentSectorId === msg.sectorId;
+          if (msg.sectorId && msg.sectorName !== undefined && isForCurrentSector) {
+            // available должен быть true если квест не выполнен (completedAt === null)
+            // или если явно указано available: true
+            const sectorAvailable =
+              msg.available !== undefined
+                ? msg.available
+                : msg.completedAt === null
+                ? true
+                : false;
+
+            const sectorQuestInfo: {
+              sectorId: string;
+              sectorName: string;
+              available: boolean;
+              completedAt: number | null;
+              timeUntilReset: number | null;
+              questInfo?: {
+                mob_kills?: {
+                  available: boolean;
+                  completedAt: number | null;
+                  timeUntilReset: number | null;
+                };
+                pvp_kills?: {
+                  available: boolean;
+                  completedAt: number | null;
+                  timeUntilReset: number | null;
+                };
+              };
+            } = {
+              sectorId: msg.sectorId,
+              sectorName: msg.sectorName,
+              available: sectorAvailable,
+              completedAt: msg.completedAt ?? null,
+              timeUntilReset: msg.timeUntilReset ?? null,
+            };
+            
+            // Если есть информация о каждом типе квеста, сохраняем её
+            if ("questInfo" in msg && msg.questInfo && typeof msg.questInfo === "object") {
+              sectorQuestInfo.questInfo = msg.questInfo as {
+                mob_kills?: {
+                  available: boolean;
+                  completedAt: number | null;
+                  timeUntilReset: number | null;
+                };
+                pvp_kills?: {
+                  available: boolean;
+                  completedAt: number | null;
+                  timeUntilReset: number | null;
+                };
+              };
+            } else {
+              // Не перезаписываем questInfo пустым: сохраняем предыдущее состояние для этого сектора,
+              // чтобы выполненный квест оставался перечёркнутым (completedAt не терялся)
+              const prev = useGameStore.getState().currentSectorQuestInfo;
+              if (prev?.sectorId === msg.sectorId && prev.questInfo) {
+                sectorQuestInfo.questInfo = prev.questInfo;
+              }
+            }
+            console.log(
+              "[Socket] Setting currentSectorQuestInfo:",
+              sectorQuestInfo,
+              "from msg:",
+              {
+                available: msg.available,
+                completedAt: msg.completedAt,
+              }
+            );
+            useGameStore.getState().setCurrentSectorQuestInfo(sectorQuestInfo);
+          } else if (!isForCurrentSector && msg.sectorId) {
+            // Игнорируем quest_progress для другого сектора (чтобы в жёлтом не показывать «выполнено» из зелёного)
+            console.log("[Socket] Ignoring quest_progress for other sector:", msg.sectorId, "current:", currentSectorId);
+          } else {
+            // Если нет информации о секторе, но есть quest, используем его sectorId (только для текущего сектора)
+            // Сохраняем prev.questInfo, чтобы выполненный mob-квест не сбрасывался при взятии PvP-квеста
+            if (quest && quest.sectorId && quest.sectorName && (currentSectorId === null || currentSectorId === quest.sectorId)) {
+              const prev = useGameStore.getState().currentSectorQuestInfo;
+              const sectorQuestInfo: {
+                sectorId: string;
+                sectorName: string;
+                available: boolean;
+                completedAt: number | null;
+                timeUntilReset: number | null;
+                questInfo?: {
+                  mob_kills?: { available: boolean; completedAt: number | null; timeUntilReset: number | null };
+                  pvp_kills?: { available: boolean; completedAt: number | null; timeUntilReset: number | null };
+                };
+              } = {
+                sectorId: quest.sectorId,
+                sectorName: quest.sectorName,
+                available: true,
+                completedAt: quest.completedAt ?? null,
+                timeUntilReset: quest.completedAt
+                  ? (() => {
+                      const now = new Date();
+                      const tomorrowStart = new Date(
+                        now.getFullYear(),
+                        now.getMonth(),
+                        now.getDate() + 1
+                      );
+                      return Math.max(0, tomorrowStart.getTime() - Date.now());
+                    })()
+                  : null,
+              };
+              if (prev?.sectorId === quest.sectorId && prev.questInfo) {
+                sectorQuestInfo.questInfo = prev.questInfo;
+              }
+              console.log(
+                "[Socket] Setting currentSectorQuestInfo from quest:",
+                sectorQuestInfo
+              );
+              useGameStore
+                .getState()
+                .setCurrentSectorQuestInfo(sectorQuestInfo);
+            }
+          }
+
+          // Определяем доступность квеста
+          let questAvailableValue: boolean;
+          if (msg.error) {
+            // Показываем сообщение об ошибке (например, квест уже выполнен)
+            console.warn("[Socket] Quest error:", msg.error);
+            // Квест недоступен (уже выполнен)
+            questAvailableValue = false;
+          } else if (msg.available !== undefined) {
+            // Используем явное значение доступности от сервера
+            questAvailableValue = msg.available;
+          } else if (quest) {
+            // Если есть активный квест, он доступен
+            questAvailableValue = true;
+          } else {
+            // Если квеста нет и нет явного указания, предполагаем что доступен
+            // (можно создать новый квест)
+            questAvailableValue = true;
+          }
+
+          // Если есть информация о секторе, используем её available значение
+          if (msg.sectorId && msg.sectorName !== undefined) {
+            // Используем available из sectorInfo, если оно определено, иначе используем вычисленное значение
+            const sectorAvailable =
+              msg.available !== undefined ? msg.available : questAvailableValue;
+            console.log(
+              "[Socket] Setting questAvailable from sector info:",
+              sectorAvailable
+            );
+            useGameStore.getState().setQuestAvailable(sectorAvailable);
+          } else {
+            console.log(
+              "[Socket] Setting questAvailable:",
+              questAvailableValue
+            );
+            useGameStore.getState().setQuestAvailable(questAvailableValue);
+          }
+
+          // Если есть активный квест (и он не завершён), добавляем его в список активных квестов
+          // Завершённые квесты приходят отдельно; следом сервер шлёт quest: null + questInfo + activeQuests
+          if (quest && (quest.completedAt == null || quest.completedAt === 0)) {
+            // Проверяем соответствие сектора
+            if (msg.sectorId && quest.sectorId !== msg.sectorId) {
+              console.log(
+                "[Socket] Quest sector mismatch, ignoring quest:",
+                quest.sectorId,
+                "!=",
+                msg.sectorId
+              );
+            } else {
+              console.log("[Socket] Adding quest to activeQuests:", {
+                id: quest.id,
+                sectorId: quest.sectorId,
+                questType: quest.questType,
+                killsCompleted: quest.killsCompleted,
+                killsRequired: quest.killsRequired,
+              });
+
+              // Нормализуем объект квеста, убеждаемся что все поля имеют правильный тип
+              const normalizedQuest = {
+                ...quest,
+                failedAt: quest.failedAt ?? null, // Преобразуем undefined в null
+                completedAt: quest.completedAt ?? null, // На всякий случай
+                sectorName: quest.sectorName ?? "", // Добавляем дефолтное значение если нужно
+              };
+
+              // Добавляем квест в список активных квестов
+              const currentQuests = useGameStore.getState().activeQuests;
+              const existingIndex = currentQuests.findIndex(
+                (q) => q && q.id === normalizedQuest.id
+              );
+
+              if (existingIndex >= 0) {
+                // Обновляем существующий квест
+                const updatedQuests = [...currentQuests];
+                updatedQuests[existingIndex] = normalizedQuest;
+                useGameStore.getState().setActiveQuests(updatedQuests);
+              } else {
+                // Добавляем новый квест
+                useGameStore
+                  .getState()
+                  .setActiveQuests([...currentQuests, normalizedQuest]);
+              }
+
+              // Для обратной совместимости сохраняем первый квест в dailyQuest
+              const allQuests = useGameStore.getState().activeQuests;
+              useGameStore
+                .getState()
+                .setDailyQuest(allQuests.length > 0 ? allQuests[0] : null);
+            }
+          } else {
+            // quest: null — обновление состояния сектора (например, после отмены квеста)
+            const currentQuests = useGameStore.getState().activeQuests;
+            console.log("[Socket] quest_progress with quest=null, msg:", {
+              sectorId: msg.sectorId,
+              hasQuestInfo: "questInfo" in msg,
+              hasActiveQuests: "activeQuests" in msg,
+              activeQuestsLength: Array.isArray((msg as { activeQuests?: unknown }).activeQuests) 
+                ? (msg as { activeQuests: unknown[] }).activeQuests.length 
+                : 0,
+              currentQuestsLength: currentQuests.length,
+            });
+            if (msg.sectorId) {
+              // Если есть questInfo и массив activeQuests — атомарно подменяем квесты этого сектора
+              if (
+                msg.questInfo &&
+                typeof msg.questInfo === "object" &&
+                msg.activeQuests &&
+                Array.isArray(msg.activeQuests)
+              ) {
+                const normalized = msg.activeQuests.map((q) => ({
+                  id: q.id,
+                  sectorId: q.sectorId,
+                  sectorName: q.sectorName ?? "",
+                  questType: q.questType,
+                  killsRequired: q.killsRequired,
+                  killsCompleted: q.killsCompleted,
+                  timeLimitMinutes: q.timeLimitMinutes,
+                  startedAt: q.startedAt,
+                  expiresAt: q.expiresAt,
+                  completedAt: q.completedAt ?? null,
+                  failedAt: q.failedAt ?? null,
+                  rewardExp: q.rewardExp,
+                  rewardTokens: q.rewardTokens,
+                  timeRemaining: q.timeRemaining,
+                }));
+                const otherSectorQuests = currentQuests.filter(
+                  (q) => !q || q.sectorId !== msg.sectorId
+                );
+                const newQuests = [...otherSectorQuests, ...normalized];
+                useGameStore.getState().setActiveQuests(newQuests);
+                useGameStore
+                  .getState()
+                  .setDailyQuest(newQuests.length > 0 ? newQuests[0] : null);
+              } else if ("questInfo" in msg && msg.questInfo && typeof msg.questInfo === "object") {
+                // Только questInfo без activeQuests — убираем все квесты этого сектора
+                const filteredQuests = currentQuests.filter(
+                  (q) => !q || q.sectorId !== msg.sectorId
+                );
+                useGameStore.getState().setActiveQuests(filteredQuests);
+                useGameStore
+                  .getState()
+                  .setDailyQuest(
+                    filteredQuests.length > 0 ? filteredQuests[0] : null
+                  );
+              } else {
+                const filteredQuests = currentQuests.filter(
+                  (q) => q && q.sectorId === msg.sectorId
+                );
+                useGameStore.getState().setActiveQuests(filteredQuests);
+                useGameStore
+                  .getState()
+                  .setDailyQuest(
+                    filteredQuests.length > 0 ? filteredQuests[0] : null
+                  );
+              }
+            } else {
+              useGameStore.getState().setActiveQuests([]);
+              useGameStore.getState().setDailyQuest(null);
+            }
+          }
+
+          const updatedQuest = useGameStore.getState().dailyQuest;
+          console.log("[Socket] dailyQuest after set:", updatedQuest);
           break;
         }
       }
@@ -984,12 +1355,23 @@ const createSpaceArenaScene = (
       return Phaser.Math.Linear(a, b, t);
     }
 
-    private handlePresencePayload(players: PresenceEntry[], serverTime?: number) {
-      handlePresencePayloadFromModule(this as unknown as PresencePayloadContext, players, serverTime);
+    private handlePresencePayload(
+      players: PresenceEntry[],
+      serverTime?: number
+    ) {
+      handlePresencePayloadFromModule(
+        this as unknown as PresencePayloadContext,
+        players,
+        serverTime
+      );
     }
 
     private handleWorldPayload(world: WorldState, serverTime?: number) {
-      handleWorldPayloadFromModule(this as unknown as WorldPayloadContext, world, serverTime);
+      handleWorldPayloadFromModule(
+        this as unknown as WorldPayloadContext,
+        world,
+        serverTime
+      );
     }
 
     private sendWorldAction(type: string, payload: Record<string, unknown>) {
@@ -1018,7 +1400,8 @@ const createSpaceArenaScene = (
         remoteSnapshots: this.remoteSnapshots,
         otherPlayers: this.otherPlayers,
         lastCorrectiveShotByAttacker: this.lastCorrectiveShotByAttacker,
-        spawnRemoteLaser: (sprite, userId) => this.spawnRemoteLaser(sprite, userId),
+        spawnRemoteLaser: (sprite, userId) =>
+          this.spawnRemoteLaser(sprite, userId),
       };
       queueRemoteSnapshotFromModule(ctx, entry);
     }
@@ -1043,7 +1426,8 @@ const createSpaceArenaScene = (
         physics: this.physics,
         otherPlayersGroup: this.otherPlayersGroup,
         otherPlayers: this.otherPlayers,
-        formatPilotName: (nickname, level) => this.formatPilotName(nickname, level),
+        formatPilotName: (nickname, level) =>
+          this.formatPilotName(nickname, level),
         updateRemoteHealthBar: (bar, sprite, health, maxHealth) =>
           this.updateRemoteHealthBar(bar, sprite, health, maxHealth),
       };
@@ -1169,13 +1553,13 @@ const createSpaceArenaScene = (
       }
       this.asteroidSprites.clear();
       for (const enemy of this.enemySprites.values()) {
-        const bar = enemy.getData(
-          "healthBar"
-        ) as Phaser.GameObjects.Graphics | undefined;
+        const bar = enemy.getData("healthBar") as
+          | Phaser.GameObjects.Graphics
+          | undefined;
         bar?.destroy();
-        const levelText = enemy.getData(
-          "levelText"
-        ) as Phaser.GameObjects.Text | undefined;
+        const levelText = enemy.getData("levelText") as
+          | Phaser.GameObjects.Text
+          | undefined;
         levelText?.destroy();
         enemy.destroy();
       }
@@ -1231,7 +1615,10 @@ const createSpaceArenaScene = (
       updateRemoteHealthBarFromModule(Phaser, bar, sprite, health, maxHealth);
     }
 
-    private spawnRemoteLaser(sprite: Phaser.Physics.Arcade.Sprite, shooterUserId?: number) {
+    private spawnRemoteLaser(
+      sprite: Phaser.Physics.Arcade.Sprite,
+      shooterUserId?: number
+    ) {
       if (!this.remoteLasers) {
         return;
       }
@@ -1241,7 +1628,8 @@ const createSpaceArenaScene = (
         "laser_blue"
       ) as Phaser.Physics.Arcade.Image;
       const aimRotation =
-        (sprite.getData("aimRotation") as number | undefined) ?? sprite.rotation;
+        (sprite.getData("aimRotation") as number | undefined) ??
+        sprite.rotation;
       const shipChoice =
         (sprite.getData("shipChoice") as string | null | undefined) ?? null;
       const tint = shipChoice === "keeper20" ? 0xffa500 : 0xff3b3b;
@@ -1254,19 +1642,27 @@ const createSpaceArenaScene = (
       if (shooterUserId != null) {
         const prev = this.lastRemoteLaserByShooter.get(shooterUserId);
         if (prev?.laser.active) prev.laser.destroy();
-        this.lastRemoteLaserByShooter.set(shooterUserId, { laser, at: Date.now() });
+        this.lastRemoteLaserByShooter.set(shooterUserId, {
+          laser,
+          at: Date.now(),
+        });
       }
       this.time.delayedCall(1200, () => {
         laser.destroy();
         if (shooterUserId != null) {
           const cur = this.lastRemoteLaserByShooter.get(shooterUserId);
-          if (cur?.laser === laser) this.lastRemoteLaserByShooter.delete(shooterUserId);
+          if (cur?.laser === laser)
+            this.lastRemoteLaserByShooter.delete(shooterUserId);
         }
       });
     }
 
     /** Spawn a laser from server-authoritative attacker position toward local player (so victim sees it hit). */
-    private spawnCorrectiveLaser(attackerX: number, attackerY: number, attackerUserId: number) {
+    private spawnCorrectiveLaser(
+      attackerX: number,
+      attackerY: number,
+      attackerUserId: number
+    ) {
       if (!this.remoteLasers || !this.player) {
         return;
       }
@@ -1284,7 +1680,10 @@ const createSpaceArenaScene = (
         "laser_blue"
       ) as Phaser.Physics.Arcade.Image;
       const remote = this.otherPlayers.get(attackerUserId);
-      const tint = remote?.sprite.getData("shipChoice") === "keeper20" ? 0xffa500 : 0xff3b3b;
+      const tint =
+        remote?.sprite.getData("shipChoice") === "keeper20"
+          ? 0xffa500
+          : 0xff3b3b;
       laser.setScale(0.7);
       laser.setTint(tint);
       const laserBody = laser.body as Phaser.Physics.Arcade.Body;
@@ -1305,14 +1704,22 @@ const createSpaceArenaScene = (
       const pending = store.pendingServerSkillEffect;
       if (pending && this.socket?.readyState === WebSocket.OPEN) {
         if (pending.skillId === "immunity_5s") {
-          this.sendWorldAction("skill_immunity", { durationMs: pending.durationMs });
+          this.sendWorldAction("skill_immunity", {
+            durationMs: pending.durationMs,
+          });
           this.invulnerableUntil = Date.now() + pending.durationMs;
         } else if (pending.skillId === "healing_5s") {
-          this.sendWorldAction("skill_healing", { durationMs: pending.durationMs });
+          this.sendWorldAction("skill_healing", {
+            durationMs: pending.durationMs,
+          });
         } else if (pending.skillId === "fury_7s") {
-          this.sendWorldAction("skill_fury", { durationMs: pending.durationMs });
+          this.sendWorldAction("skill_fury", {
+            durationMs: pending.durationMs,
+          });
         } else if (pending.skillId === "teleport_3s") {
-          this.sendWorldAction("skill_teleport", { durationMs: pending.durationMs });
+          this.sendWorldAction("skill_teleport", {
+            durationMs: pending.durationMs,
+          });
         } else if (pending.skillId === "gravity_pit") {
           // Place pit at player position so it appears where they activated it
           const x = Math.round(this.player.x);
@@ -1333,7 +1740,10 @@ const createSpaceArenaScene = (
             expiresAt: Date.now() + (pending.durationMs || 5000),
             ownerUserId: myUserId != null ? String(myUserId) : undefined,
           };
-          this.lastWorldGravityPits = [...(this.lastWorldGravityPits || []), optimisticPit];
+          this.lastWorldGravityPits = [
+            ...(this.lastWorldGravityPits || []),
+            optimisticPit,
+          ];
           syncGravityPitGraphics(this as unknown as WorldSyncScene);
         }
         store.setPendingServerSkillEffect(null);
@@ -1378,7 +1788,9 @@ const createSpaceArenaScene = (
       }
       // Black hole countdown: remaining seconds until each portal closes.
       for (const [, entry] of this.blackHoleSprites) {
-        const holeData = entry.sprite.getData("holeData") as { expiresAt: number } | undefined;
+        const holeData = entry.sprite.getData("holeData") as
+          | { expiresAt: number }
+          | undefined;
         if (holeData?.expiresAt) {
           const remaining = holeData.expiresAt - Date.now();
           const seconds = Math.max(0, Math.floor(remaining / 1000));
@@ -1440,7 +1852,10 @@ const createSpaceArenaScene = (
                 ? "Невосприимчивость: до первого действия"
                 : `Невосприимчивость: ${(remaining / 1000).toFixed(1)} сек.`;
             this.invulnerableText.setText(label);
-            this.invulnerableText.setPosition(this.player.x, this.player.y - 86);
+            this.invulnerableText.setPosition(
+              this.player.x,
+              this.player.y - 86
+            );
             this.invulnerableText.setDepth(this.player.depth + 5);
           } else {
             this.invulnerableText.setText("");
@@ -1470,7 +1885,10 @@ const createSpaceArenaScene = (
             const remaining = healingEffect.expiresAt - Date.now();
             const seconds = (remaining / 1000).toFixed(1);
             this.healingBuffText.setText(`Лечение: ${seconds} сек.`);
-            this.healingBuffText.setPosition(this.player.x, this.player.y - 114);
+            this.healingBuffText.setPosition(
+              this.player.x,
+              this.player.y - 114
+            );
             this.healingBuffText.setDepth(this.player.depth + 5);
           } else {
             this.healingBuffText.setText("");
@@ -1500,15 +1918,24 @@ const createSpaceArenaScene = (
             const remaining = teleportEffect.expiresAt - Date.now();
             const seconds = (remaining / 1000).toFixed(1);
             this.teleportCastText.setText(`Телепорт: ${seconds} сек.`);
-            this.teleportCastText.setPosition(this.player.x, this.player.y - 142);
+            this.teleportCastText.setPosition(
+              this.player.x,
+              this.player.y - 142
+            );
             this.teleportCastText.setDepth(this.player.depth + 5);
             if (!this.teleportChannelGraphics) {
-              this.teleportChannelGraphics = this.add.graphics().setDepth((this.player.depth ?? 0) - 1);
+              this.teleportChannelGraphics = this.add
+                .graphics()
+                .setDepth((this.player.depth ?? 0) - 1);
             }
             this.teleportChannelGraphics.clear();
             const pulse = 0.25 + 0.12 * Math.sin(Date.now() / 120);
             this.teleportChannelGraphics.fillStyle(0xb794f6, pulse);
-            this.teleportChannelGraphics.fillCircle(this.player.x, this.player.y, 36);
+            this.teleportChannelGraphics.fillCircle(
+              this.player.x,
+              this.player.y,
+              36
+            );
           } else {
             this.teleportCastText.setText("");
             if (this.teleportChannelGraphics) {
@@ -1544,15 +1971,15 @@ const createSpaceArenaScene = (
           this.appliedLevelScale = desiredLevelScale;
           this.player.setScale(getShipScale(choice) * desiredLevelScale);
           this.playerSpeedMultiplier =
-            getShipSpeedMultiplier(choice) *
-            getLevelSpeedMultiplier(level);
+            getShipSpeedMultiplier(choice) * getLevelSpeedMultiplier(level);
           this.player.setMaxVelocity(MOVE_SPEED * this.playerSpeedMultiplier);
           // Keep aiming rotation stable; only adjust skin offset.
           this.player.setRotation(
             this.aimRotation + getSkinRotationOffset(choice)
           );
           const radius =
-            Math.max(this.player.displayWidth, this.player.displayHeight) * 0.35;
+            Math.max(this.player.displayWidth, this.player.displayHeight) *
+            0.35;
           const body = this.player.body as Phaser.Physics.Arcade.Body | null;
           if (body) {
             body.setCircle(radius);
@@ -1578,10 +2005,14 @@ const createSpaceArenaScene = (
           useGameStore.getState().pendingRespawn &&
           this.socket?.readyState === WebSocket.OPEN
         ) {
-          const vengeanceTarget = useGameStore.getState().vengeanceRespawnTargetUserId;
+          const vengeanceTarget =
+            useGameStore.getState().vengeanceRespawnTargetUserId;
           if (vengeanceTarget != null && Number.isFinite(vengeanceTarget)) {
             this.socket.send(
-              JSON.stringify({ type: "respawn_vengeance", killedByUserId: vengeanceTarget })
+              JSON.stringify({
+                type: "respawn_vengeance",
+                killedByUserId: vengeanceTarget,
+              })
             );
           } else {
             this.socket.send(JSON.stringify({ type: "respawn" }));
@@ -1595,13 +2026,18 @@ const createSpaceArenaScene = (
         if (!this.player) {
           this.interpolateRemotePlayers();
           if (this.fpsText) {
-            this.fpsText.setText(`FPS: ${Math.round(this.game.loop.actualFps)}`);
+            this.fpsText.setText(
+              `FPS: ${Math.round(this.game.loop.actualFps)}`
+            );
           }
           return;
         }
         this.player.setVelocity(0, 0);
         this.player.setVisible(true);
-        this.player.play(getShipBlindAnim(useGameStore.getState().user?.shipChoice), true);
+        this.player.play(
+          getShipBlindAnim(useGameStore.getState().user?.shipChoice),
+          true
+        );
         const body = this.player.body as Phaser.Physics.Arcade.Body | null;
         if (body) {
           body.enable = false;
@@ -1616,8 +2052,13 @@ const createSpaceArenaScene = (
         this.deathNotified = false;
         if (!this.player) return;
         this.player.setVisible(true);
-        this.player.play(getShipIdleAnim(useGameStore.getState().user?.shipChoice), true);
-        this.player.setScale(getShipScale(useGameStore.getState().user?.shipChoice));
+        this.player.play(
+          getShipIdleAnim(useGameStore.getState().user?.shipChoice),
+          true
+        );
+        this.player.setScale(
+          getShipScale(useGameStore.getState().user?.shipChoice)
+        );
         const body = this.player.body as Phaser.Physics.Arcade.Body | null;
         if (body) {
           body.enable = true;
@@ -1635,8 +2076,10 @@ const createSpaceArenaScene = (
           Math.abs(this.mobileState.joystickY) > 0.12);
 
       const movementSpeedActive =
-        useGameStore.getState().activeSkillEffect?.skillId === "movement_speed_5s" &&
-        (useGameStore.getState().activeSkillEffect?.expiresAt ?? 0) > Date.now();
+        useGameStore.getState().activeSkillEffect?.skillId ===
+          "movement_speed_5s" &&
+        (useGameStore.getState().activeSkillEffect?.expiresAt ?? 0) >
+          Date.now();
       const movementSpeedBoost = movementSpeedActive ? 1.5 : 1;
       const myUserId = useGameStore.getState().user?.id ?? null;
       const inGravityPit = this.isInsideAnyGravityPitExcludingOwner(
@@ -1649,11 +2092,16 @@ const createSpaceArenaScene = (
       const healthRatio = this.maxHealth > 0 ? this.health / this.maxHealth : 1;
       const inLowHealth =
         this.health > 0 && healthRatio < SpaceArenaScene.LOW_HEALTH_THRESHOLD;
-      const lowHealthSpeedBoost = inLowHealth ? SpaceArenaScene.LOW_HEALTH_SPEED_BOOST : 1;
+      const lowHealthSpeedBoost = inLowHealth
+        ? SpaceArenaScene.LOW_HEALTH_SPEED_BOOST
+        : 1;
 
       if (this.healthBar) {
         if (inLowHealth) {
-          if (!this.lowHealthBarPulseTween || !this.lowHealthBarPulseTween.isPlaying()) {
+          if (
+            !this.lowHealthBarPulseTween ||
+            !this.lowHealthBarPulseTween.isPlaying()
+          ) {
             this.lowHealthBarPulseTween?.remove();
             this.lowHealthBarPulseTween = this.tweens.add({
               targets: this.healthBar,
@@ -1685,13 +2133,18 @@ const createSpaceArenaScene = (
       }
 
       this.player.setMaxVelocity(
-        MOVE_SPEED * this.playerSpeedMultiplier * movementSpeedBoost * gravityPitFactor * lowHealthSpeedBoost
+        MOVE_SPEED *
+          this.playerSpeedMultiplier *
+          movementSpeedBoost *
+          gravityPitFactor *
+          lowHealthSpeedBoost
       );
 
       // Fury skill: increase keeper size for duration; restore when effect ends
       const furyActive =
         useGameStore.getState().activeSkillEffect?.skillId === "fury_7s" &&
-        (useGameStore.getState().activeSkillEffect?.expiresAt ?? 0) > Date.now();
+        (useGameStore.getState().activeSkillEffect?.expiresAt ?? 0) >
+          Date.now();
       const choice = useGameStore.getState().user?.shipChoice;
       const baseScale = getShipScale(choice) * this.appliedLevelScale;
       const furyScale = baseScale * (furyActive ? FURY_SIZE_MULT : 1);
@@ -1728,11 +2181,22 @@ const createSpaceArenaScene = (
         inputX = this.mobileState.joystickX;
         inputY = this.mobileState.joystickY;
         const mag = Math.min(1, Math.sqrt(inputX * inputX + inputY * inputY));
-        speed = MOVE_SPEED * this.playerSpeedMultiplier * movementSpeedBoost * gravityPitFactor * lowHealthSpeedBoost * mag;
+        speed =
+          MOVE_SPEED *
+          this.playerSpeedMultiplier *
+          movementSpeedBoost *
+          gravityPitFactor *
+          lowHealthSpeedBoost *
+          mag;
       } else {
         inputX = (right ? 1 : 0) + (left ? -1 : 0);
         inputY = (down ? 1 : 0) + (up ? -1 : 0);
-        speed = MOVE_SPEED * this.playerSpeedMultiplier * movementSpeedBoost * gravityPitFactor * lowHealthSpeedBoost;
+        speed =
+          MOVE_SPEED *
+          this.playerSpeedMultiplier *
+          movementSpeedBoost *
+          gravityPitFactor *
+          lowHealthSpeedBoost;
       }
 
       const moving = inputX !== 0 || inputY !== 0;
@@ -1748,7 +2212,8 @@ const createSpaceArenaScene = (
         const rotation = vec.angle() + Math.PI / 2;
         this.aimRotation = rotation;
         this.player.setRotation(
-          rotation + getSkinRotationOffset(useGameStore.getState().user?.shipChoice)
+          rotation +
+            getSkinRotationOffset(useGameStore.getState().user?.shipChoice)
         );
       } else {
         this.player.setVelocity(0, 0);
@@ -1773,7 +2238,11 @@ const createSpaceArenaScene = (
       if (activeSkill && now >= activeSkill.expiresAt) {
         store.setActiveSkillEffect(null);
       }
-      if (this.skillKeys && !this.isChatInputFocused() && !this.isInvulnerable()) {
+      if (
+        this.skillKeys &&
+        !this.isChatInputFocused() &&
+        !this.isInvulnerable()
+      ) {
         for (let i = 0; i < this.skillKeys.length; i++) {
           if (Phaser.Input.Keyboard.JustDown(this.skillKeys[i])) {
             void store.triggerSkillSlot(i);
@@ -1782,7 +2251,8 @@ const createSpaceArenaScene = (
         }
       }
       const isContinuousLaser =
-        (activeSkill?.skillId === "continuous_laser" || activeSkill?.skillId === "continuous_laser_super") &&
+        (activeSkill?.skillId === "continuous_laser" ||
+          activeSkill?.skillId === "continuous_laser_super") &&
         now < (activeSkill?.expiresAt ?? 0);
       const isSuperLaser = activeSkill?.skillId === "continuous_laser_super";
 
@@ -1844,7 +2314,10 @@ const createSpaceArenaScene = (
 
         const CONTINUOUS_LASER_HIT_INTERVAL_MS = 200;
         const beamHalfWidth = 18;
-        if (now - this.lastContinuousLaserHitAt >= CONTINUOUS_LASER_HIT_INTERVAL_MS) {
+        if (
+          now - this.lastContinuousLaserHitAt >=
+          CONTINUOUS_LASER_HIT_INTERVAL_MS
+        ) {
           this.lastContinuousLaserHitAt = now;
           const baseDamage = useGameStore.getState().player?.damage ?? 18;
           const damage = Math.floor(baseDamage * 3);
@@ -1856,26 +2329,43 @@ const createSpaceArenaScene = (
                 const sin = Math.sin(-angle);
                 const lx = (px - beamOriginX) * cos - (py - beamOriginY) * sin;
                 const ly = (px - beamOriginX) * sin + (py - beamOriginY) * cos;
-                if (lx >= 0 && lx <= beamLength && Math.abs(ly) <= beamHalfWidth) return true;
+                if (
+                  lx >= 0 &&
+                  lx <= beamLength &&
+                  Math.abs(ly) <= beamHalfWidth
+                )
+                  return true;
               }
               return false;
             };
             this.enemies?.children.iterate((child) => {
               const enemy = child as Phaser.Physics.Arcade.Sprite;
-              if (!enemy.active || !pointInAnyBeam(enemy.x, enemy.y)) return true;
+              if (!enemy.active || !pointInAnyBeam(enemy.x, enemy.y))
+                return true;
               const enemyId = enemy.getData("id") as number | undefined;
               if (enemyId != null) {
-                this.sendWorldAction("enemy_hit", { enemyId, damage, continuousLaser: true });
+                this.sendWorldAction("enemy_hit", {
+                  enemyId,
+                  damage,
+                  continuousLaser: true,
+                });
                 this.audioManager.playEnemyHitSound();
               }
               return true;
             });
             this.otherPlayersGroup?.children.iterate((child) => {
               const other = child as Phaser.Physics.Arcade.Sprite;
-              if (!other.active || !pointInAnyBeam(other.x, other.y)) return true;
-              const targetUserId = other.getData("userId") as number | undefined;
+              if (!other.active || !pointInAnyBeam(other.x, other.y))
+                return true;
+              const targetUserId = other.getData("userId") as
+                | number
+                | undefined;
               if (targetUserId != null) {
-                this.sendWorldAction("player_hit", { targetUserId, damage, continuousLaser: true });
+                this.sendWorldAction("player_hit", {
+                  targetUserId,
+                  damage,
+                  continuousLaser: true,
+                });
                 this.audioManager.playEnemyHitSound();
               }
               return true;
@@ -1886,14 +2376,20 @@ const createSpaceArenaScene = (
             const pointInBeam = (px: number, py: number) => {
               const lx = (px - beamOriginX) * cos - (py - beamOriginY) * sin;
               const ly = (px - beamOriginX) * sin + (py - beamOriginY) * cos;
-              return lx >= 0 && lx <= beamLength && Math.abs(ly) <= beamHalfWidth;
+              return (
+                lx >= 0 && lx <= beamLength && Math.abs(ly) <= beamHalfWidth
+              );
             };
             this.enemies?.children.iterate((child) => {
               const enemy = child as Phaser.Physics.Arcade.Sprite;
               if (!enemy.active || !pointInBeam(enemy.x, enemy.y)) return true;
               const enemyId = enemy.getData("id") as number | undefined;
               if (enemyId != null) {
-                this.sendWorldAction("enemy_hit", { enemyId, damage, continuousLaser: true });
+                this.sendWorldAction("enemy_hit", {
+                  enemyId,
+                  damage,
+                  continuousLaser: true,
+                });
                 this.audioManager.playEnemyHitSound();
               }
               return true;
@@ -1901,9 +2397,15 @@ const createSpaceArenaScene = (
             this.otherPlayersGroup?.children.iterate((child) => {
               const other = child as Phaser.Physics.Arcade.Sprite;
               if (!other.active || !pointInBeam(other.x, other.y)) return true;
-              const targetUserId = other.getData("userId") as number | undefined;
+              const targetUserId = other.getData("userId") as
+                | number
+                | undefined;
               if (targetUserId != null) {
-                this.sendWorldAction("player_hit", { targetUserId, damage, continuousLaser: true });
+                this.sendWorldAction("player_hit", {
+                  targetUserId,
+                  damage,
+                  continuousLaser: true,
+                });
                 this.audioManager.playEnemyHitSound();
               }
               return true;
@@ -1935,10 +2437,7 @@ const createSpaceArenaScene = (
         const inSafeZoneNow =
           zoneActiveNow &&
           this.isInsideSafeZone(zoneNow, this.player.x, this.player.y);
-        if (
-          inSafeZoneNow ||
-          useGameStore.getState().playerInSafeZone
-        ) {
+        if (inSafeZoneNow || useGameStore.getState().playerInSafeZone) {
           this.mobileState.fireJustPressed = false;
           return;
         }
@@ -2105,12 +2604,18 @@ const createSpaceArenaScene = (
           this.teleportCastText.setPosition(this.player.x, this.player.y - 142);
           this.teleportCastText.setDepth(this.player.depth + 5);
           if (!this.teleportChannelGraphics) {
-            this.teleportChannelGraphics = this.add.graphics().setDepth((this.player.depth ?? 0) - 1);
+            this.teleportChannelGraphics = this.add
+              .graphics()
+              .setDepth((this.player.depth ?? 0) - 1);
           }
           this.teleportChannelGraphics.clear();
           const pulse = 0.25 + 0.12 * Math.sin(Date.now() / 120);
           this.teleportChannelGraphics.fillStyle(0xb794f6, pulse);
-          this.teleportChannelGraphics.fillCircle(this.player.x, this.player.y, 36);
+          this.teleportChannelGraphics.fillCircle(
+            this.player.x,
+            this.player.y,
+            36
+          );
         } else {
           this.teleportCastText.setText("");
           if (this.teleportChannelGraphics) {
@@ -2175,14 +2680,18 @@ const createSpaceArenaScene = (
         otherPlayers: this.otherPlayers,
         lastWorldSafeZone: this.lastWorldSafeZone,
         isInsideSafeZone: (zone, x, y) => this.isInsideSafeZone(zone, x, y),
-        formatPilotName: (nickname, level) => this.formatPilotName(nickname, level),
+        formatPilotName: (nickname, level) =>
+          this.formatPilotName(nickname, level),
         updateRemoteHealthBar: (bar, sprite, health, maxHealth) =>
           this.updateRemoteHealthBar(bar, sprite, health, maxHealth),
         Phaser,
       };
       interpolateRemotePlayersFromModule(ctx);
     }
-    private formatPilotName(nickname: string | null | undefined, level?: number) {
+    private formatPilotName(
+      nickname: string | null | undefined,
+      level?: number
+    ) {
       const name = nickname && nickname.trim() ? nickname : "Пилот";
       const safeLevel = level && level > 0 ? level : 1;
       return `${name} Lv.${safeLevel}`;
@@ -2215,7 +2724,11 @@ const createSpaceArenaScene = (
       const now = Date.now();
       for (const pit of pits) {
         if (pit.expiresAt <= now) continue;
-        if (excludeOwnerId != null && String(pit.ownerUserId) === String(excludeOwnerId)) continue;
+        if (
+          excludeOwnerId != null &&
+          String(pit.ownerUserId) === String(excludeOwnerId)
+        )
+          continue;
         const dx = x - pit.x;
         const dy = y - pit.y;
         if (Math.hypot(dx, dy) <= pit.radius) return true;

@@ -8,6 +8,7 @@ import { SectorService } from "./sector.service";
 import { BroadcastService } from "./broadcast.service";
 import { ChatService } from "./chat.service";
 import { PlayerService } from "./player.service";
+import { QuestService } from "./quest.service";
 import { DbService } from "./db.service";
 import { SPAWN_IMMUNITY_UNTIL_FIRST_ACTION, SPAWN_IMMUNITY_AFTER_ACTION_MS } from "../config/constants";
 import {
@@ -44,6 +45,7 @@ export interface HandlerServices {
   broadcast: BroadcastService;
   chat: ChatService;
   player: PlayerService;
+  quest: QuestService;
   db: DbService;
 }
 
@@ -72,6 +74,7 @@ export class MessageHandlerService {
     private readonly broadcast: BroadcastService,
     private readonly chat: ChatService,
     private readonly player: PlayerService,
+    private readonly quest: QuestService,
     private readonly db: DbService
   ) {}
 
@@ -87,6 +90,7 @@ export class MessageHandlerService {
       broadcast: resolved?.broadcast ?? this.broadcast,
       chat: resolved?.chat ?? this.chat,
       player: resolved?.player ?? this.player,
+      quest: resolved?.quest ?? this.quest,
       db: resolved?.db ?? this.db,
     };
 
@@ -136,6 +140,14 @@ export class MessageHandlerService {
     }
     if (message.type === "player_hit") {
       await this.handlePlayerHit(user, message, services);
+      return;
+    }
+    if (message.type === "start_quest") {
+      await this.handleStartQuest(user, message, services);
+      return;
+    }
+    if (message.type === "cancel_quest") {
+      await this.handleCancelQuest(user, message, services);
       return;
     }
     if (message.type === "asteroid_destroy") {
@@ -271,6 +283,33 @@ export class MessageHandlerService {
         killedBy: "Мобы",
         killedByUserId: 0,
       }, services.presence);
+      
+      // Проваливаем PvP квест, если игрок умер от мобов (в PvP квесте нельзя умирать)
+      if (entry.sectorId) {
+        try {
+          await services.quest.failPvpQuest(user.id, entry.sectorId);
+          // Убираем флаг hasPvpQuest при провале квеста
+          if (entry.hasPvpQuest) {
+            entry.hasPvpQuest = false;
+            services.presence.setEntry(user.id, entry);
+            services.broadcast.broadcastPresence(entry.sectorId, services.presence);
+          }
+          // Отправляем сообщение о провале квеста
+          const sector = services.sectorService.sectors.get(entry.sectorId);
+          const sectorName = sector ? services.sectorService.getSectorDisplayName(sector) : "секторе";
+          const chatEntry = {
+            id: `quest-pvp-failed-mob-${Date.now()}-${user.id}`,
+            userId: user.id,
+            nickname: "Система",
+            text: `${entry.nickname ?? `Пилот ${user.id}`}, PvP квест провален в ${sectorName} (смерть от мобов). Попробуйте еще раз!`,
+            createdAt: Date.now(),
+          };
+          await services.chat.persistChatMessage(chatEntry as Parameters<ChatService["persistChatMessage"]>[0], "global", "", services.db);
+          services.broadcast.broadcastChat(chatEntry, "global", "", services.presence);
+        } catch (err) {
+          console.error("Failed to fail PvP quest on PvE death:", err);
+        }
+      }
     } catch (err) {
       console.error("Failed to apply PvE death penalty:", err);
     }
@@ -291,8 +330,10 @@ export class MessageHandlerService {
       services.sectorService.sectors.get(entry.sectorId) ??
       services.sectorService.findOrCreateSector(1, undefined, services.presence);
     entry.sectorId = sector.id;
-    const spawnX = randBetween(120, sector.config.width - 120);
-    const spawnY = randBetween(120, sector.config.height - 120);
+    // Используем Math.random() для более случайного распределения при респавне
+    const margin = 50;
+    const spawnX = margin + Math.random() * (sector.config.width - margin * 2);
+    const spawnY = margin + Math.random() * (sector.config.height - margin * 2);
     const rotation = 0;
     const monsterKey = normalizeMonsterChoice(entry?.shipChoice);
     let level = entry.level || 1;
@@ -518,10 +559,82 @@ export class MessageHandlerService {
   private async movePlayerToSector(userId: number, nextLevel: number, services: HandlerServices): Promise<void> {
     const entry = services.presence.getEntry(userId);
     if (!entry) return;
+    
     const previousSector = entry.sectorId ? services.sectorService.sectors.get(entry.sectorId) : null;
     const targetSector = services.sectorService.findOrCreateSector(nextLevel, previousSector?.id, services.presence);
-    const spawnX = randBetween(120, targetSector.config.width - 120);
-    const spawnY = randBetween(120, targetSector.config.height - 120);
+    
+    // При переходе в другой сектор удаляем все активные квесты текущего сектора
+    if (previousSector && previousSector.id !== targetSector.id) {
+      try {
+        // Убираем флаг hasPvpQuest при переходе в другой сектор
+        if (entry.hasPvpQuest) {
+          entry.hasPvpQuest = false;
+          services.presence.setEntry(userId, entry);
+          services.broadcast.broadcastPresence(previousSector.id, services.presence);
+        }
+        // Удаляем все активные квесты текущего сектора (без questType = удалить все типы)
+        await services.quest.cancelQuest(userId, previousSector.id);
+      } catch (err) {
+        console.error("Failed to cancel quest on sector change:", err);
+      }
+    }
+    
+    // Проверяем активные квесты для нового сектора (не создаем автоматически)
+    try {
+      const allActiveQuests = await services.quest.getAllActiveQuests(userId, targetSector.id);
+      const sectorName = services.sectorService.getSectorDisplayName(targetSector);
+      const sockets = services.presence.getSockets(userId);
+      
+      if (allActiveQuests.length > 0 && sockets) {
+        // Отправляем все активные квесты
+        for (const activeQuest of allActiveQuests) {
+          const questWithName = { ...activeQuest, sectorName };
+          const payload = JSON.stringify({ 
+            type: "quest_progress", 
+            quest: questWithName,
+            sectorId: targetSector.id,
+            sectorName: sectorName,
+            available: true,
+          });
+          for (const s of sockets) {
+            if (s.readyState === 1) {
+              try {
+                s.send(payload);
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }
+      } else if (sockets) {
+        // Если активных квестов нет, отправляем информацию о секторе
+        const questInfo = await services.quest.getQuestInfo(userId, targetSector.id);
+        const payload = JSON.stringify({
+          type: "quest_progress",
+          quest: null,
+          available: questInfo.available,
+          sectorId: targetSector.id,
+          sectorName: sectorName,
+          completedAt: questInfo.completedAt,
+          timeUntilReset: questInfo.timeUntilReset,
+        });
+        for (const s of sockets) {
+          if (s.readyState === 1) {
+            try {
+              s.send(payload);
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load quests on sector change:", err);
+    }
+    // Используем Math.random() для более случайного распределения при переходе между секторами
+    const margin = 50;
+    const spawnX = margin + Math.random() * (targetSector.config.width - margin * 2);
+    const spawnY = margin + Math.random() * (targetSector.config.height - margin * 2);
     const zone = targetSector.world.safeZone;
     const initialInSafeZone =
       zone &&
@@ -585,11 +698,82 @@ export class MessageHandlerService {
     const entry = services.presence.getEntry(userId);
     if (!entry) return;
     const previousSector = services.sectorService.sectors.get(entry.sectorId);
+    
     const targetSector =
       services.sectorService.sectors.get(targetSectorId) ??
       services.sectorService.createSector(Number.isFinite(fallbackLevel) ? fallbackLevel : previousSector?.level ?? 1);
-    const spawnX = randBetween(120, targetSector.config.width - 120);
-    const spawnY = randBetween(120, targetSector.config.height - 120);
+    
+    // Отменяем квест при переходе в другой сектор
+    if (previousSector && previousSector.id !== targetSectorId) {
+      try {
+        // Убираем флаг hasPvpQuest при переходе в другой сектор
+        if (entry.hasPvpQuest) {
+          entry.hasPvpQuest = false;
+          services.presence.setEntry(userId, entry);
+          services.broadcast.broadcastPresence(previousSector.id, services.presence);
+        }
+        await services.quest.cancelQuest(userId, previousSector.id);
+      } catch (err) {
+        console.error("Failed to cancel quest on sector change:", err);
+      }
+    }
+    
+    // Проверяем активные квесты для нового сектора (не создаем автоматически)
+    try {
+      const allActiveQuests = await services.quest.getAllActiveQuests(userId, targetSector.id);
+      const sectorName = services.sectorService.getSectorDisplayName(targetSector);
+      const sockets = services.presence.getSockets(userId);
+      
+      if (allActiveQuests.length > 0 && sockets) {
+        // Отправляем все активные квесты
+        for (const activeQuest of allActiveQuests) {
+          const questWithName = { ...activeQuest, sectorName };
+          const payload = JSON.stringify({ 
+            type: "quest_progress", 
+            quest: questWithName,
+            sectorId: targetSector.id,
+            sectorName: sectorName,
+            available: true,
+          });
+          for (const s of sockets) {
+            if (s.readyState === 1) {
+              try {
+                s.send(payload);
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }
+      } else if (sockets) {
+        // Если активных квестов нет, отправляем информацию о секторе
+        const questInfo = await services.quest.getQuestInfo(userId, targetSector.id);
+        const payload = JSON.stringify({
+          type: "quest_progress",
+          quest: null,
+          available: questInfo.available,
+          sectorId: targetSector.id,
+          sectorName: sectorName,
+          completedAt: questInfo.completedAt,
+          timeUntilReset: questInfo.timeUntilReset,
+        });
+        for (const s of sockets) {
+          if (s.readyState === 1) {
+            try {
+              s.send(payload);
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load quests on sector change:", err);
+    }
+    // Используем Math.random() для более случайного распределения при переходе между секторами
+    const margin = 50;
+    const spawnX = margin + Math.random() * (targetSector.config.width - margin * 2);
+    const spawnY = margin + Math.random() * (targetSector.config.height - margin * 2);
     const zone = targetSector.world.safeZone;
     const initialInSafeZone =
       zone &&
@@ -627,6 +811,58 @@ export class MessageHandlerService {
       }
     } catch {
       // ignore
+    }
+    // Проверяем активные квесты для нового сектора (не создаем автоматически)
+    try {
+      const allActiveQuests = await services.quest.getAllActiveQuests(userId, targetSector.id);
+      const sectorName = services.sectorService.getSectorDisplayName(targetSector);
+      const socks = services.presence.getSockets(userId);
+      
+      if (allActiveQuests.length > 0 && socks) {
+        // Отправляем все активные квесты
+        for (const activeQuest of allActiveQuests) {
+          const questWithName = { ...activeQuest, sectorName };
+          const payload = JSON.stringify({ 
+            type: "quest_progress", 
+            quest: questWithName,
+            sectorId: targetSector.id,
+            sectorName: sectorName,
+            available: true,
+          });
+          for (const s of socks) {
+            if (s.readyState === 1) {
+              try {
+                s.send(payload);
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }
+      } else if (socks) {
+        // Если активных квестов нет, отправляем информацию о секторе
+        const questInfo = await services.quest.getQuestInfo(userId, targetSector.id);
+        const payload = JSON.stringify({
+          type: "quest_progress",
+          quest: null,
+          available: questInfo.available,
+          sectorId: targetSector.id,
+          sectorName: sectorName,
+          completedAt: questInfo.completedAt,
+          timeUntilReset: questInfo.timeUntilReset,
+        });
+        for (const s of socks) {
+          if (s.readyState === 1) {
+            try {
+              s.send(payload);
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load quests on sector change:", err);
     }
     try {
       await services.db.Player.update(
@@ -878,6 +1114,213 @@ export class MessageHandlerService {
           } catch (err) {
             console.error("Failed to award exp:", err);
           }
+          
+          // Отслеживаем убийство моба для квеста
+          if (presenceEntry?.sectorId) {
+            try {
+              const questProgress = await services.quest.incrementKills(user.id, presenceEntry.sectorId);
+              if (questProgress) {
+                // Добавляем название сектора
+                const sector = services.sectorService.sectors.get(presenceEntry.sectorId);
+                const sectorName = sector ? services.sectorService.getSectorDisplayName(sector) : undefined;
+                const questProgressWithName = { ...questProgress, sectorName };
+                // Отправляем обновление прогресса квеста
+                const sockets = services.presence.getSockets(user.id);
+                if (sockets) {
+                  const payload = JSON.stringify({
+                    type: "quest_progress",
+                    quest: questProgressWithName,
+                  });
+                  for (const s of sockets) {
+                    if (s.readyState === 1) {
+                      try {
+                        s.send(payload);
+                      } catch {
+                        // ignore
+                      }
+                    }
+                  }
+                }
+                
+                // Если квест выполнен успешно, выдаем награду
+                // Проверяем, что квест относится к текущему сектору игрока
+                if (questProgress.completedAt && questProgress.killsCompleted >= questProgress.killsRequired) {
+                  if (questProgress.sectorId !== presenceEntry.sectorId) {
+                    console.warn(`[MessageHandler] Quest sector mismatch: quest.sectorId=${questProgress.sectorId}, player.sectorId=${presenceEntry.sectorId}`);
+                    // Не выдаем награду за квест из другого сектора, продолжаем обработку
+                  } else {
+                    console.log(`[MessageHandler] Completing quest ${questProgress.id} for sector ${questProgress.sectorId}`);
+                    const reward = await services.quest.completeQuest(questProgress.id, user.id, presenceEntry.sectorId, presenceEntry.shipChoice);
+                    if (reward) {
+                      // Получаем обновленный квест с completedAt для отправки клиенту
+                      const completedQuest = await services.quest.getQuestById(questProgress.id);
+                      
+                      // Выдаем опыт
+                      if (reward.exp) {
+                        const progress = await services.player.awardPlayerExp(
+                          user.id,
+                          reward.exp,
+                          presenceEntry.shipChoice,
+                          services.db
+                        );
+                        if (progress) {
+                          services.broadcast.sendPlayerUpdate(user.id, progress, services.presence);
+                          if (presenceEntry) {
+                            presenceEntry.level = progress.level;
+                            presenceEntry.maxHealth = progress.maxHealth;
+                            if (typeof progress.health === "number") presenceEntry.health = progress.health;
+                          }
+                        }
+                      }
+                      // Обновляем ресурсы (токены уже выданы в completeQuest)
+                      const player = await services.db.Player.findOne({
+                        where: { userId: user.id },
+                        attributes: ["resources"],
+                      });
+                      if (player) {
+                        services.broadcast.sendPlayerUpdate(
+                          user.id,
+                          { resources: player.resources },
+                          services.presence
+                        );
+                      }
+                      
+                      // Отправляем обновленный quest_progress с completedAt клиенту
+                      if (completedQuest) {
+                        // Добавляем название сектора
+                        const sector = services.sectorService.sectors.get(presenceEntry.sectorId || "");
+                        const sectorName = sector ? services.sectorService.getSectorDisplayName(sector) : undefined;
+                        const completedQuestWithName = { ...completedQuest, sectorName };
+                        const sockets = services.presence.getSockets(user.id);
+                        if (sockets) {
+                          const payload = JSON.stringify({
+                            type: "quest_progress",
+                            quest: completedQuestWithName,
+                          });
+                          for (const s of sockets) {
+                            if (s.readyState === 1) {
+                              try {
+                                s.send(payload);
+                              } catch {
+                                // ignore
+                              }
+                            }
+                          }
+                          // Отправляем полное обновление сектора (questInfo + activeQuests), чтобы клиент показал квест перечёркнутым и убрал из активных
+                          const allActiveQuestsAfter = await services.quest.getAllActiveQuests(user.id, presenceEntry.sectorId);
+                          const mobQuestInfoAfter = await services.quest.getQuestInfo(user.id, presenceEntry.sectorId, "mob_kills");
+                          const pvpQuestInfoAfter = await services.quest.getQuestInfo(user.id, presenceEntry.sectorId, "pvp_kills");
+                          const sectorPayload = JSON.stringify({
+                            type: "quest_progress",
+                            quest: null,
+                            sectorId: presenceEntry.sectorId,
+                            sectorName: sectorName ?? "",
+                            available: mobQuestInfoAfter.available || pvpQuestInfoAfter.available,
+                            completedAt: mobQuestInfoAfter.completedAt ?? pvpQuestInfoAfter.completedAt ?? null,
+                            timeUntilReset: mobQuestInfoAfter.timeUntilReset ?? pvpQuestInfoAfter.timeUntilReset ?? null,
+                            questInfo: {
+                              mob_kills: mobQuestInfoAfter,
+                              pvp_kills: pvpQuestInfoAfter,
+                            },
+                            activeQuests: allActiveQuestsAfter.map((q) => ({ ...q, sectorName })),
+                          });
+                          for (const s of sockets) {
+                            if (s.readyState === 1) {
+                              try {
+                                s.send(sectorPayload);
+                              } catch {
+                                // ignore
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                    
+                    // Отправляем сообщение о завершении квеста
+                    if (reward) {
+                      try {
+                        const nickname = presenceEntry?.nickname ?? "Игрок";
+                        // Получаем название сектора
+                        const sector = services.sectorService.sectors.get(presenceEntry.sectorId || "");
+                        const sectorName = sector ? services.sectorService.getSectorDisplayName(sector) : "секторе";
+                        const chatEntry = {
+                          id: `quest-${Date.now()}-${user.id}`,
+                          userId: user.id,
+                          nickname: "Система",
+                          text: `${nickname} выполнил ежедневный квест в ${sectorName}! Награда: +${reward.exp} опыта, +${reward.tokens} токенов.`,
+                          createdAt: Date.now(),
+                        };
+                        await services.chat.persistChatMessage(chatEntry as Parameters<ChatService["persistChatMessage"]>[0], "global", "", services.db);
+                        services.broadcast.broadcastChat(chatEntry, "global", "", services.presence);
+                      } catch {
+                        // ignore
+                      }
+                    }
+                  }
+                }
+              } else {
+                // Квест истёк по времени или был удалён - отправляем обновление клиенту
+                const sector = services.sectorService.sectors.get(presenceEntry.sectorId);
+                const sectorName = sector ? services.sectorService.getSectorDisplayName(sector) : undefined;
+                const allActiveQuests = await services.quest.getAllActiveQuests(user.id, presenceEntry.sectorId);
+                const mobQuestInfo = await services.quest.getQuestInfo(user.id, presenceEntry.sectorId, "mob_kills");
+                const pvpQuestInfo = await services.quest.getQuestInfo(user.id, presenceEntry.sectorId, "pvp_kills");
+                
+                const sockets = services.presence.getSockets(user.id);
+                if (sockets) {
+                  // Отправляем активные квесты (если есть)
+                  if (allActiveQuests.length > 0) {
+                    for (const activeQuest of allActiveQuests) {
+                      const questWithName = { ...activeQuest, sectorName };
+                      const payload = JSON.stringify({ 
+                        type: "quest_progress", 
+                        quest: questWithName,
+                        sectorId: presenceEntry.sectorId,
+                        sectorName: sectorName,
+                      });
+                      for (const s of sockets) {
+                        if (s.readyState === 1) {
+                          try {
+                            s.send(payload);
+                          } catch {
+                            // ignore
+                          }
+                        }
+                      }
+                    }
+                  }
+                  
+                  // Отправляем информацию о секторе
+                  const payload = JSON.stringify({
+                    type: "quest_progress",
+                    quest: null,
+                    sectorId: presenceEntry.sectorId,
+                    sectorName: sectorName,
+                    available: mobQuestInfo.available || pvpQuestInfo.available,
+                    completedAt: mobQuestInfo.completedAt || pvpQuestInfo.completedAt,
+                    timeUntilReset: mobQuestInfo.timeUntilReset || pvpQuestInfo.timeUntilReset,
+                    questInfo: {
+                      mob_kills: mobQuestInfo,
+                      pvp_kills: pvpQuestInfo,
+                    },
+                    activeQuests: allActiveQuests.map((q) => ({ ...q, sectorName })),
+                  });
+                  for (const s of sockets) {
+                    if (s.readyState === 1) {
+                      try {
+                        s.send(payload);
+                      } catch {
+                        // ignore
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (err) {
+              console.error("Failed to update quest progress:", err);
+            }
+          }
         }
         setTimeout(() => {
           services.sectorService.spawnEnemyPublic(sector);
@@ -1018,6 +1461,281 @@ export class MessageHandlerService {
     }
   }
 
+  private async handleStartQuest(
+    user: ResolvedUser,
+    message: Record<string, unknown>,
+    services: HandlerServices
+  ): Promise<void> {
+    const presenceEntry = services.presence.getEntry(user.id);
+    if (!presenceEntry?.sectorId) return;
+
+    try {
+      // Получаем тип квеста из сообщения (по умолчанию mob_kills)
+      const questType = (message.questType as "mob_kills" | "pvp_kills") || "mob_kills";
+      
+      // Получаем информацию о секторе
+      const sector = services.sectorService.sectors.get(presenceEntry.sectorId);
+      const sectorName = sector ? services.sectorService.getSectorDisplayName(sector) : undefined;
+      
+      // Проверяем, разрешены ли PvP квесты в этом секторе (белые сектора не имеют PvP квестов)
+      if (questType === "pvp_kills") {
+        const pvpAllowed = sector?.config?.pvpAllowed ?? false;
+        if (!pvpAllowed) {
+          // Белый сектор - PvP квесты недоступны
+          const sockets = services.presence.getSockets(user.id);
+          if (sockets) {
+            const payload = JSON.stringify({
+              type: "quest_progress",
+              quest: null,
+              error: "PvP квесты недоступны в белых секторах",
+              available: false,
+            });
+            for (const s of sockets) {
+              if (s.readyState === 1) {
+                try {
+                  s.send(payload);
+                } catch {
+                  // ignore
+                }
+              }
+            }
+          }
+          return;
+        }
+      }
+
+      // Проверяем, есть ли уже активный квест этого типа
+      const allActiveQuests = await services.quest.getAllActiveQuests(user.id, presenceEntry.sectorId);
+      const activeQuestOfType = allActiveQuests.find(q => q.questType === questType);
+      
+      if (activeQuestOfType) {
+        // Добавляем название сектора
+        const questWithName = { ...activeQuestOfType, sectorName };
+        // Отправляем существующий квест
+        const sockets = services.presence.getSockets(user.id);
+        if (sockets) {
+          const payload = JSON.stringify({
+            type: "quest_progress",
+            quest: questWithName,
+            available: true,
+          });
+          for (const s of sockets) {
+            if (s.readyState === 1) {
+              try {
+                s.send(payload);
+              } catch {
+                // ignore
+              }
+            }
+          }
+          // Полное состояние сектора, чтобы mob-квест оставался «выполнен»
+          const mobQuestInfo = await services.quest.getQuestInfo(user.id, presenceEntry.sectorId, "mob_kills");
+          const pvpQuestInfo = await services.quest.getQuestInfo(user.id, presenceEntry.sectorId, "pvp_kills");
+          const sectorPayload = JSON.stringify({
+            type: "quest_progress",
+            quest: null,
+            sectorId: presenceEntry.sectorId,
+            sectorName: sectorName ?? "",
+            available: mobQuestInfo.available || pvpQuestInfo.available,
+            completedAt: mobQuestInfo.completedAt ?? pvpQuestInfo.completedAt ?? null,
+            timeUntilReset: mobQuestInfo.timeUntilReset ?? pvpQuestInfo.timeUntilReset ?? null,
+            questInfo: {
+              mob_kills: mobQuestInfo,
+              pvp_kills: pvpQuestInfo,
+            },
+            activeQuests: allActiveQuests.map((q) => ({ ...q, sectorName })),
+          });
+          for (const s of sockets) {
+            if (s.readyState === 1) {
+              try {
+                s.send(sectorPayload);
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }
+        // Обновляем флаг hasPvpQuest если это PvP квест
+        if (questType === "pvp_kills" && !presenceEntry.hasPvpQuest) {
+          presenceEntry.hasPvpQuest = true;
+          services.presence.setEntry(user.id, presenceEntry);
+          services.broadcast.broadcastPresence(presenceEntry.sectorId, services.presence);
+        }
+        return;
+      }
+
+      // Создаем новый квест указанного типа
+      const questProgress = await services.quest.createQuest(user.id, presenceEntry.sectorId, questType);
+      if (questProgress) {
+        // Добавляем название сектора
+        const questWithName = { ...questProgress, sectorName };
+        const sockets = services.presence.getSockets(user.id);
+        if (sockets) {
+          const payload = JSON.stringify({
+            type: "quest_progress",
+            quest: questWithName,
+            available: true,
+          });
+          for (const s of sockets) {
+            if (s.readyState === 1) {
+              try {
+                s.send(payload);
+              } catch {
+                // ignore
+              }
+            }
+          }
+          // Полное состояние сектора (questInfo + activeQuests), чтобы mob-квест оставался «выполнен», а не сбрасывался
+          const allActiveQuestsAfter = await services.quest.getAllActiveQuests(user.id, presenceEntry.sectorId);
+          const mobQuestInfo = await services.quest.getQuestInfo(user.id, presenceEntry.sectorId, "mob_kills");
+          const pvpQuestInfo = await services.quest.getQuestInfo(user.id, presenceEntry.sectorId, "pvp_kills");
+          const sectorPayload = JSON.stringify({
+            type: "quest_progress",
+            quest: null,
+            sectorId: presenceEntry.sectorId,
+            sectorName: sectorName ?? "",
+            available: mobQuestInfo.available || pvpQuestInfo.available,
+            completedAt: mobQuestInfo.completedAt ?? pvpQuestInfo.completedAt ?? null,
+            timeUntilReset: mobQuestInfo.timeUntilReset ?? pvpQuestInfo.timeUntilReset ?? null,
+            questInfo: {
+              mob_kills: mobQuestInfo,
+              pvp_kills: pvpQuestInfo,
+            },
+            activeQuests: allActiveQuestsAfter.map((q) => ({ ...q, sectorName })),
+          });
+          for (const s of sockets) {
+            if (s.readyState === 1) {
+              try {
+                s.send(sectorPayload);
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }
+      } else {
+        // Квест уже выполнен сегодня в этом секторе
+        const sockets = services.presence.getSockets(user.id);
+        if (sockets) {
+          const payload = JSON.stringify({
+            type: "quest_progress",
+            quest: null,
+            error: "Квест уже выполнен сегодня в этом секторе",
+            available: false,
+          });
+          for (const s of sockets) {
+            if (s.readyState === 1) {
+              try {
+                s.send(payload);
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to start quest:", err);
+    }
+  }
+
+  private async handleCancelQuest(
+    user: ResolvedUser,
+    message: Record<string, unknown>,
+    services: HandlerServices
+  ): Promise<void> {
+    const presenceEntry = services.presence.getEntry(user.id);
+    if (!presenceEntry?.sectorId) return;
+
+    try {
+      // Получаем тип квеста из сообщения (если не указан, отменяем все - для совместимости)
+      const questType = message.questType as "mob_kills" | "pvp_kills" | undefined;
+      
+      // Проверяем, есть ли активный квест перед отменой
+      const allActiveQuests = await services.quest.getAllActiveQuests(user.id, presenceEntry.sectorId);
+      const hasPvpQuest = allActiveQuests.some(q => q.questType === "pvp_kills");
+      const questToCancel = questType ? allActiveQuests.find(q => q.questType === questType) : null;
+      
+      // Дополнительная проверка: ищем квест напрямую в БД для диагностики
+      const whereClause: any = {
+        userId: user.id,
+        sectorId: presenceEntry.sectorId,
+        completedAt: null,
+      };
+      if (questType) {
+        whereClause.questType = questType;
+      }
+      const directQuestCheck = await services.db.DailyQuest.findAll({
+        where: whereClause,
+      });
+      
+      console.log(`[MessageHandler] Cancel quest request: userId=${user.id}, sectorId=${presenceEntry.sectorId}, questType=${questType}, foundActiveQuest=${!!questToCancel}, totalActiveQuests=${allActiveQuests.length}, directDbCheck=${directQuestCheck.length}`);
+      
+      // Если getAllActiveQuests не нашёл квест, но он есть в БД, возможно он истёк
+      if (directQuestCheck.length > 0 && allActiveQuests.length === 0) {
+        console.log(`[MessageHandler] WARNING: Found ${directQuestCheck.length} quest(s) in DB but getAllActiveQuests returned 0. Checking expiration...`);
+        for (const q of directQuestCheck) {
+          const expiresAt = new Date(q.expiresAt).getTime();
+          const now = Date.now();
+          console.log(`[MessageHandler] Quest ${q.id}: expiresAt=${new Date(expiresAt).toISOString()}, now=${new Date(now).toISOString()}, expired=${now >= expiresAt}`);
+        }
+      }
+      
+      const cancelled = await services.quest.cancelQuest(user.id, presenceEntry.sectorId, questType);
+      
+      // Убираем флаг hasPvpQuest если был активный PvP квест и он был отменен
+      if (questType === "pvp_kills" && hasPvpQuest && presenceEntry.hasPvpQuest) {
+        presenceEntry.hasPvpQuest = false;
+        services.presence.setEntry(user.id, presenceEntry);
+        services.broadcast.broadcastPresence(presenceEntry.sectorId, services.presence);
+      }
+      
+      // Всегда отправляем обновление клиенту, даже если не было найдено активных квестов для отмены
+      // (например, квест уже был отменен ранее, но клиент все еще показывает его как активный)
+      const allActiveQuestsAfterCancel = await services.quest.getAllActiveQuests(user.id, presenceEntry.sectorId);
+      const sectorName = services.sectorService.getSectorDisplayName(
+        services.sectorService.sectors.get(presenceEntry.sectorId)!
+      );
+      
+      const sockets = services.presence.getSockets(user.id);
+      if (sockets) {
+        const mobQuestInfo = await services.quest.getQuestInfo(user.id, presenceEntry.sectorId, "mob_kills");
+        const pvpQuestInfo = await services.quest.getQuestInfo(user.id, presenceEntry.sectorId, "pvp_kills");
+        
+        // Одно сообщение с полным состоянием сектора, чтобы клиент обновил UI атомарно (без гонки двух сообщений)
+        const activeQuestsWithName = allActiveQuestsAfterCancel.map((q) => ({
+          ...q,
+          sectorName,
+        }));
+        const sectorPayload = JSON.stringify({
+          type: "quest_progress",
+          quest: null,
+          sectorId: presenceEntry.sectorId,
+          sectorName: sectorName,
+          available: mobQuestInfo.available || pvpQuestInfo.available,
+          completedAt: mobQuestInfo.completedAt || pvpQuestInfo.completedAt,
+          timeUntilReset: mobQuestInfo.timeUntilReset || pvpQuestInfo.timeUntilReset,
+          questInfo: {
+            mob_kills: mobQuestInfo,
+            pvp_kills: pvpQuestInfo,
+          },
+          activeQuests: activeQuestsWithName,
+        });
+        for (const s of sockets) {
+          if (s.readyState === 1) {
+            try {
+              s.send(sectorPayload);
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to cancel quest:", err);
+    }
+  }
+
   private handleRequestExit(
     user: ResolvedUser,
     socket: GameSocket,
@@ -1147,6 +1865,120 @@ export class MessageHandlerService {
       } catch {
         // ignore
       }
+      // Отслеживаем убийство игрока для PvP квеста убийцы
+      if (attacker?.sectorId) {
+        try {
+          const pvpQuestProgress = await services.quest.incrementPvpKills(user.id, attacker.sectorId);
+          if (pvpQuestProgress) {
+            // Добавляем название сектора
+            const sector = services.sectorService.sectors.get(attacker.sectorId);
+            const sectorName = sector ? services.sectorService.getSectorDisplayName(sector) : undefined;
+            const pvpQuestProgressWithName = { ...pvpQuestProgress, sectorName };
+            // Отправляем обновление прогресса PvP квеста
+            const sockets = services.presence.getSockets(user.id);
+            if (sockets) {
+              const payload = JSON.stringify({
+                type: "quest_progress",
+                quest: pvpQuestProgressWithName,
+              });
+              for (const s of sockets) {
+                if (s.readyState === 1) {
+                  try {
+                    s.send(payload);
+                  } catch {
+                    // ignore
+                  }
+                }
+              }
+            }
+            
+            // Если PvP квест выполнен, выдаем награду и убираем флаг hasPvpQuest
+            if (pvpQuestProgress.completedAt && pvpQuestProgress.killsCompleted >= pvpQuestProgress.killsRequired) {
+              // Убираем флаг hasPvpQuest при завершении квеста
+              if (attacker.hasPvpQuest) {
+                attacker.hasPvpQuest = false;
+                services.presence.setEntry(user.id, attacker);
+                services.broadcast.broadcastPresence(attacker.sectorId, services.presence);
+              }
+              const reward = await services.quest.completeQuest(pvpQuestProgress.id, user.id, attacker.sectorId, attacker.shipChoice);
+              if (reward) {
+                // Выдаем опыт
+                if (reward.exp) {
+                  const progress = await services.player.awardPlayerExp(
+                    user.id,
+                    reward.exp,
+                    attacker.shipChoice,
+                    services.db
+                  );
+                  if (progress) {
+                    services.broadcast.sendPlayerUpdate(user.id, progress, services.presence);
+                  }
+                }
+                // Обновляем ресурсы
+                const player = await services.db.Player.findOne({
+                  where: { userId: user.id },
+                  attributes: ["resources"],
+                });
+                if (player) {
+                  services.broadcast.sendPlayerUpdate(
+                    user.id,
+                    { resources: player.resources },
+                    services.presence
+                  );
+                }
+                
+                // Отправляем сообщение о завершении PvP квеста
+                try {
+                  const nickname = attacker?.nickname ?? "Игрок";
+                  const sector = services.sectorService.sectors.get(attacker.sectorId || "");
+                  const sectorName = sector ? services.sectorService.getSectorDisplayName(sector) : "секторе";
+                  const chatEntry = {
+                    id: `quest-pvp-${Date.now()}-${user.id}`,
+                    userId: user.id,
+                    nickname: "Система",
+                    text: `${nickname} выполнил PvP квест в ${sectorName}! Награда: +${reward.exp} опыта, +${reward.tokens} токенов.`,
+                    createdAt: Date.now(),
+                  };
+                  await services.chat.persistChatMessage(chatEntry as Parameters<ChatService["persistChatMessage"]>[0], "global", "", services.db);
+                  services.broadcast.broadcastChat(chatEntry, "global", "", services.presence);
+                } catch {
+                  // ignore
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Failed to update PvP quest progress:", err);
+        }
+      }
+      
+      // Проваливаем PvP квест убитого игрока (если он был в PvP квесте)
+      if (victim?.sectorId) {
+        try {
+          await services.quest.failPvpQuest(targetUserId, victim.sectorId);
+          // Убираем флаг hasPvpQuest при провале квеста
+          if (victim.hasPvpQuest) {
+            victim.hasPvpQuest = false;
+            services.presence.setEntry(targetUserId, victim);
+            services.broadcast.broadcastPresence(victim.sectorId, services.presence);
+          }
+          // Отправляем сообщение о провале квеста
+          const sector = services.sectorService.sectors.get(victim.sectorId);
+          const sectorName = sector ? services.sectorService.getSectorDisplayName(sector) : "секторе";
+          const chatEntry = {
+            id: `quest-pvp-failed-${Date.now()}-${targetUserId}`,
+            userId: targetUserId,
+            nickname: "Система",
+            text: `${victim.nickname ?? `Пилот ${targetUserId}`}, PvP квест провален в ${sectorName}. Попробуйте еще раз!`,
+            createdAt: Date.now(),
+          };
+          await services.chat.persistChatMessage(chatEntry as Parameters<ChatService["persistChatMessage"]>[0], "global", "", services.db);
+          services.broadcast.broadcastChat(chatEntry, "global", "", services.presence);
+        } catch (err) {
+          console.error("Failed to fail PvP quest:", err);
+        }
+      }
+      
       try {
         if (lostTokens > 0) {
           const killerRow = await services.db.Player.findOne({

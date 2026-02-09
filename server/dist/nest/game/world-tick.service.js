@@ -19,12 +19,14 @@ const sector_service_1 = require("./sector.service");
 const presence_service_1 = require("./presence.service");
 const broadcast_service_1 = require("./broadcast.service");
 const player_service_1 = require("./player.service");
+const quest_service_1 = require("./quest.service");
 const utils_2 = require("./utils");
 const db_service_1 = require("./db.service");
 function createWorldTickState() {
     return {
         lastWorldTick: Date.now(),
         lastVengeanceHuntedPushByUser: new Map(),
+        lastQuestResetDate: null,
     };
 }
 function sendSelfUpdateToPresence(presence, userId, payload) {
@@ -61,13 +63,28 @@ async function persistHealthForTick(db, userId, next, shipChoice) {
     }
 }
 function runWorldTick(services, state) {
-    const { sectorService, presence, broadcast, db } = services;
+    const { sectorService, presence, broadcast, db, quest } = services;
     try {
         if (!sectorService?.sectors)
             return;
         const now = Date.now();
         const dt = Math.min((now - state.lastWorldTick) / 1000, 0.2);
         state.lastWorldTick = now;
+        // Проверяем, наступила ли полночь для сброса квестов
+        if (quest) {
+            const currentDate = new Date();
+            const currentDateString = currentDate.toISOString().split("T")[0]; // YYYY-MM-DD
+            // Сбрасываем квесты в 00:00 (проверяем изменение даты)
+            if (state.lastQuestResetDate !== currentDateString) {
+                const currentHour = currentDate.getHours();
+                const currentMinute = currentDate.getMinutes();
+                // Сбрасываем только если прошла полночь (00:00-00:59)
+                if (currentHour === 0 && currentMinute < 60) {
+                    void quest.resetExpiredQuests();
+                    state.lastQuestResetDate = currentDateString;
+                }
+            }
+        }
         for (const sector of sectorService.sectors.values()) {
             sectorService.ensureWorldPopulationForSector(sector);
             sectorService.ensureBlackHole(sector);
@@ -283,12 +300,13 @@ function runWorldTick(services, state) {
     }
 }
 let WorldTickService = class WorldTickService {
-    constructor(sectorService, presence, broadcast, player, db) {
+    constructor(sectorService, presence, broadcast, player, db, quest) {
         this.sectorService = sectorService;
         this.presence = presence;
         this.broadcast = broadcast;
         this.player = player;
         this.db = db;
+        this.quest = quest;
         this.state = createWorldTickState();
         this.tick = this.tick.bind(this);
     }
@@ -301,6 +319,7 @@ let WorldTickService = class WorldTickService {
             broadcast: this.broadcast,
             player: this.player,
             db: this.db,
+            quest: this.quest,
         }, this.state);
     }
 };
@@ -311,5 +330,6 @@ exports.WorldTickService = WorldTickService = __decorate([
         presence_service_1.PresenceService,
         broadcast_service_1.BroadcastService,
         player_service_1.PlayerService,
-        db_service_1.DbService])
+        db_service_1.DbService,
+        quest_service_1.QuestService])
 ], WorldTickService);

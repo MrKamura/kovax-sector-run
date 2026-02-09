@@ -22,7 +22,7 @@ const maxHealthForLevel = (level: number) =>
 const damageForLevel = (level: number) =>
   BASE_DAMAGE + Math.max(0, clampLevel(level) - 1) * 2;
 const energyCapForLevel = (level: number) =>
-  BASE_ENERGY_CAP + Math.max(0, clampLevel(level) - 1) * ENERGY_PER_LEVEL;
+  BASE_ENERGY_CAP + Math.floor(Math.max(0, clampLevel(level) - 1) / 3);
 
 const PLAYER_MONSTER_MODS: Record<string, { maxHealth: number; damage: number }> =
   {

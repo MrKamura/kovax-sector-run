@@ -20,6 +20,7 @@ const broadcast_service_1 = require("./broadcast.service");
 const chat_service_1 = require("./chat.service");
 const message_handler_service_1 = require("./message-handler.service");
 const player_service_1 = require("./player.service");
+const quest_service_1 = require("./quest.service");
 const utils_1 = require("./utils");
 function broadcastPresenceToSector(presence, sectorId) {
     const now = Date.now();
@@ -51,7 +52,7 @@ function sendPlayerUpdateToPresence(presence, userId, player) {
     }
 }
 let GameGateway = class GameGateway {
-    constructor(db, presence, sectorService, broadcast, chat, messageHandler, player) {
+    constructor(db, presence, sectorService, broadcast, chat, messageHandler, player, quest) {
         this.db = db;
         this.presence = presence;
         this.sectorService = sectorService;
@@ -59,6 +60,7 @@ let GameGateway = class GameGateway {
         this.chat = chat;
         this.messageHandler = messageHandler;
         this.player = player;
+        this.quest = quest;
         this.wss = null;
         this.resolved = null;
     }
@@ -94,6 +96,7 @@ let GameGateway = class GameGateway {
         const chat = this.resolved?.chat ?? this.chat;
         const messageHandler = this.resolved?.messageHandler ?? this.messageHandler;
         const player = this.resolved?.player ?? this.player;
+        const quest = this.resolved?.quest ?? this.quest;
         if (!db) {
             ws.close(1008, "Unauthorized");
             return;
@@ -178,6 +181,15 @@ let GameGateway = class GameGateway {
         const initialInSafeZone = zone &&
             zone.expiresAt > Date.now() &&
             sectorService.isInsideSafeZone(zone, boundedX, boundedY);
+        // Проверяем, есть ли активный PvP квест
+        let hasPvpQuest = false;
+        try {
+            const allActiveQuests = await quest.getAllActiveQuests(user.id, assignedSector.id);
+            hasPvpQuest = allActiveQuests.some(q => q.questType === "pvp_kills");
+        }
+        catch {
+            // ignore
+        }
         const entry = {
             userId: user.id,
             nickname: user.nickname,
@@ -195,6 +207,7 @@ let GameGateway = class GameGateway {
             isDead: existingPresence?.isDead ?? health <= 0,
             sectorId: assignedSector.id,
             wasInSafeZone: !!initialInSafeZone,
+            hasPvpQuest,
             vengeanceTargetUserId: existingPresence?.vengeanceTargetUserId,
             vengeanceExpiresAt: existingPresence?.vengeanceExpiresAt,
             huntedByUserId: existingPresence?.huntedByUserId,
@@ -264,6 +277,40 @@ let GameGateway = class GameGateway {
             scope: "global",
             messages: await chat.loadChatHistory("global", undefined, db),
         }));
+        // Проверяем информацию о квестах для сектора
+        try {
+            const allActiveQuests = await quest.getAllActiveQuests(user.id, assignedSector.id);
+            const sectorName = sectorService.getSectorDisplayName(assignedSector);
+            if (allActiveQuests.length > 0) {
+                // Отправляем все активные квесты
+                for (const activeQuest of allActiveQuests) {
+                    const questWithName = { ...activeQuest, sectorName };
+                    ws.send(JSON.stringify({
+                        type: "quest_progress",
+                        quest: questWithName,
+                        sectorId: assignedSector.id,
+                        sectorName: sectorName,
+                        available: true,
+                    }));
+                }
+            }
+            else {
+                // Если активных квестов нет, отправляем информацию о секторе
+                const questInfo = await quest.getQuestInfo(user.id, assignedSector.id);
+                ws.send(JSON.stringify({
+                    type: "quest_progress",
+                    quest: null,
+                    available: questInfo.available,
+                    sectorId: assignedSector.id,
+                    sectorName: sectorName,
+                    completedAt: questInfo.completedAt,
+                    timeUntilReset: questInfo.timeUntilReset,
+                }));
+            }
+        }
+        catch (err) {
+            console.error("Failed to load quests:", err);
+        }
         ws.on("message", async (data) => {
             try {
                 const message = JSON.parse(data.toString());
@@ -294,5 +341,6 @@ exports.GameGateway = GameGateway = __decorate([
         broadcast_service_1.BroadcastService,
         chat_service_1.ChatService,
         message_handler_service_1.MessageHandlerService,
-        player_service_1.PlayerService])
+        player_service_1.PlayerService,
+        quest_service_1.QuestService])
 ], GameGateway);

@@ -17,6 +17,9 @@ import { ExitOverlay } from "./components/ExitOverlay";
 import { SettingsMenu } from "./components/SettingsMenu";
 import { ChatPanel } from "./components/ChatPanel";
 import { PlayerPanel } from "./components/PlayerPanel";
+import { QuestPanel } from "./components/QuestPanel";
+import { QuestButton } from "./components/QuestButton";
+import { QuestCompleteOverlay } from "./components/QuestCompleteOverlay";
 import {
   useChat,
   useIntroStory,
@@ -38,6 +41,7 @@ export default function Home() {
   const deathInfo = useGameStore((s) => s.deathInfo);
   const lowHealthActive = useGameStore((s) => s.lowHealthActive);
   const levelUpCelebration = useGameStore((s) => s.levelUpCelebration);
+  const questCompleteReward = useGameStore((s) => s.questCompleteReward);
   const clearLevelUpCelebration = useGameStore((s) => s.clearLevelUpCelebration);
   const requestRespawn = useGameStore((s) => s.requestRespawn);
   const requestRespawnVengeance = useGameStore((s) => s.requestRespawnVengeance);
@@ -210,6 +214,7 @@ export default function Home() {
           >
             <SpaceArena paused={menuOpen} />
 
+            <QuestPanel />
             <div className={styles.hud}>
               <div className={styles.topRightControls}>
                 <button
@@ -219,6 +224,7 @@ export default function Home() {
                 >
                   Меню
                 </button>
+                <QuestButton />
                 <div className={styles.huntBuffs}>
                   {vengeance && vengeance.expiresAt > Date.now() && (
                     <div className={styles.vengeanceBuff} aria-label="Hunting">
@@ -304,6 +310,14 @@ export default function Home() {
                 tokenPercent={deathInfo?.tokenPercent}
                 onRespawn={() => requestRespawn()}
                 onRespawnVengeance={requestRespawnVengeance}
+              />
+            )}
+
+            {questCompleteReward && (
+              <QuestCompleteOverlay
+                rewardExp={questCompleteReward.exp}
+                rewardTokens={questCompleteReward.tokens}
+                onClose={() => useGameStore.getState().setQuestCompleteReward(null)}
               />
             )}
 

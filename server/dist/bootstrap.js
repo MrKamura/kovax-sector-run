@@ -52,6 +52,7 @@ const broadcast_service_1 = require("./nest/game/broadcast.service");
 const chat_service_1 = require("./nest/game/chat.service");
 const message_handler_service_1 = require("./nest/game/message-handler.service");
 const player_service_1 = require("./nest/game/player.service");
+const quest_service_1 = require("./nest/game/quest.service");
 const db_service_1 = require("./nest/game/db.service");
 const constants_1 = require("./nest/config/constants");
 const port = Number(process.env.PORT || 3000);
@@ -68,17 +69,53 @@ async function bootstrap() {
     const db = nestApp.get(db_service_1.DbService);
     const sectorService = nestApp.get(sector_service_1.SectorService);
     await sectorService.loadSectorsFromDb(db);
+    // Проверяем, что DbService правильно инициализирован
+    if (!db.DailyQuest) {
+        console.error("Bootstrap: db.DailyQuest is undefined!");
+    }
+    else {
+        console.log("Bootstrap: db.DailyQuest initialized successfully");
+    }
     const gameGateway = nestApp.get(game_gateway_1.GameGateway);
     const worldTickState = (0, world_tick_service_1.createWorldTickState)();
+    // Получаем все сервисы
+    const resolvedDb = nestApp.get(db_service_1.DbService);
+    const resolvedPlayer = nestApp.get(player_service_1.PlayerService);
+    // Убеждаемся, что DbService полностью инициализирован перед получением QuestService
+    if (!resolvedDb.DailyQuest) {
+        console.error("Bootstrap: db.DailyQuest is undefined before getting QuestService!");
+        throw new Error("DbService not properly initialized");
+    }
+    // Создаем QuestService вручную с правильными зависимостями
+    // Это необходимо, так как createApplicationContext не всегда правильно инжектирует зависимости
+    const resolvedQuest = new quest_service_1.QuestService(resolvedDb, resolvedPlayer);
+    // Проверяем, что quest имеет db
+    if (!resolvedQuest) {
+        console.error("Bootstrap: resolvedQuest is undefined!");
+    }
+    else {
+        // Проверяем, что quest имеет доступ к db
+        const questDb = resolvedQuest.db;
+        if (!questDb) {
+            console.error("Bootstrap: resolvedQuest.db is undefined!");
+        }
+        else if (!questDb.DailyQuest) {
+            console.error("Bootstrap: resolvedQuest.db.DailyQuest is undefined!");
+        }
+        else {
+            console.log("Bootstrap: resolvedQuest.db.DailyQuest initialized successfully");
+        }
+    }
     // Pass resolved services so gateway works when Nest does not inject deps (createApplicationContext)
     gameGateway.attachToServer(server, upgradeHandler, {
-        db: nestApp.get(db_service_1.DbService),
+        db: resolvedDb,
         presence: nestApp.get(presence_service_1.PresenceService),
         sectorService: nestApp.get(sector_service_1.SectorService),
         broadcast: nestApp.get(broadcast_service_1.BroadcastService),
         chat: nestApp.get(chat_service_1.ChatService),
         messageHandler: nestApp.get(message_handler_service_1.MessageHandlerService),
         player: nestApp.get(player_service_1.PlayerService),
+        quest: resolvedQuest,
     });
     setInterval(() => {
         (0, world_tick_service_1.runWorldTick)({
@@ -86,7 +123,8 @@ async function bootstrap() {
             presence: nestApp.get(presence_service_1.PresenceService),
             broadcast: nestApp.get(broadcast_service_1.BroadcastService),
             player: nestApp.get(player_service_1.PlayerService),
-            db: nestApp.get(db_service_1.DbService),
+            db: resolvedDb,
+            quest: resolvedQuest,
         }, worldTickState);
     }, constants_1.TICK_INTERVAL_MS);
     server.listen(port, () => {

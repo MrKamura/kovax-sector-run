@@ -9,6 +9,7 @@
     "build:all": "next build && npm run build:server",
     "start": "node server/dist/bootstrap.js",
     "migrate": "node server/run-migrations.js",
+    "reset-quests": "node server/reset-user-quests.js",
     "lint": "eslint"
   },
   "dependencies": {

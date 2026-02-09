@@ -103,6 +103,13 @@ export function ChatPanel({
     }
   }, [pmTarget]);
 
+  // Автоматическое переключение со scope "system" на "sector", так как вкладка системы удалена
+  useEffect(() => {
+    if (scope === "system") {
+      onScopeChange("sector");
+    }
+  }, [scope, onScopeChange]);
+
   // Автоматическая прокрутка чата вниз при появлении новых сообщений
   useEffect(() => {
     const el = chatListRef.current;
@@ -407,13 +414,6 @@ export function ChatPanel({
         >
           Личные
         </button>
-        <button
-          type="button"
-          className={scope === "system" ? styles.chatTabActive : styles.chatTab}
-          onClick={() => onScopeChange("system")}
-        >
-          Система
-        </button>
       </div>
 
       {enabledChats.private && !selectedPrivateUserId && privateUserIds.length > 0 && (
@@ -512,23 +512,31 @@ export function ChatPanel({
           ref={chatInputRef}
           value={chatInput}
           onChange={(e) => onChatInputChange(e.target.value)}
+          disabled={scope === "system"}
           placeholder={
-            selectedPrivateUserId
-              ? "Личное сообщение..."
-              : scope === "sector"
-                ? "Сообщение в сектор..."
-                : scope === "global"
-                  ? "Глобальное сообщение..."
-                  : "Введите сообщение..."
+            scope === "system"
+              ? "В систему нельзя отправлять сообщения"
+              : selectedPrivateUserId
+                ? "Личное сообщение..."
+                : scope === "sector"
+                  ? "Сообщение в сектор..."
+                  : scope === "global"
+                    ? "Глобальное сообщение..."
+                    : "Введите сообщение..."
           }
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
+            if (e.key === "Enter" && scope !== "system") {
               e.preventDefault();
               onSend();
             }
           }}
         />
-        <button type="button" className={styles.chatSend} onClick={() => onSend()}>
+        <button 
+          type="button" 
+          className={styles.chatSend} 
+          onClick={() => onSend()}
+          disabled={scope === "system"}
+        >
           Отпр.
         </button>
       </div>

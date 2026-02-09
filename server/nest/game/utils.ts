@@ -70,7 +70,7 @@ export const enemyStatsForLevel = (level: number) => ({
 });
 
 export const energyCapForLevel = (level: number) =>
-  BASE_ENERGY_CAP + Math.max(0, level - 1) * ENERGY_CAP_PER_LEVEL;
+  BASE_ENERGY_CAP + Math.floor(Math.max(0, level - 1) / 3);
 
 export const tokensForMobLevel = (level: number) => {
   const L = Math.max(1, Number(level) || 1);

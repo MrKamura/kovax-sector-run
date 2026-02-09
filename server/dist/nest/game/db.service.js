@@ -67,6 +67,8 @@ let DbService = class DbService {
         this.Player = models_1.PlayerModel;
         this.ChatMessage = models_1.ChatMessageModel;
         this.Sector = models_1.SectorModel;
+        this.DailyQuest = models_1.DailyQuestModel;
+        this.UserQuestCompletion = models_1.UserQuestCompletionModel;
     }
     async onModuleDestroy() {
         await this.sequelize.close();

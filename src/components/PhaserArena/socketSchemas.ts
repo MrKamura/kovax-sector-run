@@ -17,6 +17,7 @@ export const presenceEntrySchema = z.object({
   updatedAt: z.number(),
   huntedExpiresAt: z.number().optional(),
   isHunted: z.boolean().optional(),
+  hasPvpQuest: z.boolean().optional(),
 });
 export type PresenceEntrySchema = z.infer<typeof presenceEntrySchema>;
 
@@ -257,6 +258,61 @@ export const socketMessageSchema = z.discriminatedUnion("type", [
     attackerX: z.number().optional(),
     attackerY: z.number().optional(),
   }),
+  z.object({
+    type: z.literal("quest_progress"),
+    quest: z.object({
+      id: z.number(),
+      sectorId: z.string(),
+      sectorName: z.string().optional(),
+      questType: z.enum(["mob_kills", "pvp_kills"]),
+      killsRequired: z.number(),
+      killsCompleted: z.number(),
+      timeLimitMinutes: z.number(),
+      startedAt: z.number(),
+      expiresAt: z.number(),
+      completedAt: z.number().nullable(),
+      failedAt: z.number().nullable().optional(),
+      rewardExp: z.number(),
+      rewardTokens: z.number(),
+      timeRemaining: z.number(),
+      expired: z.boolean().optional(),
+    }).nullable(),
+    error: z.string().optional(),
+    available: z.boolean().optional(),
+    sectorId: z.string().optional(), // ID сектора для которого отправляется информация о квесте
+    sectorName: z.string().optional(), // Название сектора
+    completedAt: z.number().nullable().optional(), // Время завершения квеста в этом секторе
+    timeUntilReset: z.number().nullable().optional(), // Время до обновления квеста
+    questInfo: z.object({
+      mob_kills: z.object({
+        available: z.boolean(),
+        completedAt: z.number().nullable(),
+        timeUntilReset: z.number().nullable(),
+      }).optional(),
+      pvp_kills: z.object({
+        available: z.boolean(),
+        completedAt: z.number().nullable(),
+        timeUntilReset: z.number().nullable(),
+      }).optional(),
+    }).optional(), // Информация о доступности квестов по типам
+    activeQuests: z.array(z.object({
+      id: z.number(),
+      sectorId: z.string(),
+      sectorName: z.string().optional(),
+      questType: z.enum(["mob_kills", "pvp_kills"]),
+      killsRequired: z.number(),
+      killsCompleted: z.number(),
+      timeLimitMinutes: z.number(),
+      startedAt: z.number(),
+      expiresAt: z.number(),
+      completedAt: z.number().nullable(),
+      failedAt: z.number().nullable().optional(),
+      rewardExp: z.number(),
+      rewardTokens: z.number(),
+      timeRemaining: z.number(),
+      expired: z.boolean().optional(),
+    })).optional(), // Массив активных квестов для атомарного обновления
+  }),
 ]);
 
 export type SocketMessage = z.infer<typeof socketMessageSchema>;
@@ -320,6 +376,14 @@ export const outgoingMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("disconnect") }),
   z.object({ type: z.literal("respawn") }),
   z.object({ type: z.literal("player_dead") }),
+  z.object({ 
+    type: z.literal("start_quest"),
+    questType: z.enum(["mob_kills", "pvp_kills"]).optional(), // Тип квеста, по умолчанию mob_kills
+  }),
+  z.object({ 
+    type: z.literal("cancel_quest"),
+    questType: z.enum(["mob_kills", "pvp_kills"]).optional(), // Тип квеста для отмены
+  }),
 ]);
 export type OutgoingMessageSchema = z.infer<typeof outgoingMessageSchema>;
 

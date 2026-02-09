@@ -90,6 +90,60 @@ type GameStore = {
   pendingRespawn: boolean;
   /** When set, Phaser sends respawn_vengeance with this userId */
   vengeanceRespawnTargetUserId: number | null;
+  /** Daily quest progress for current sector */
+  dailyQuest: {
+    id: number;
+    sectorId: string;
+    sectorName?: string;
+    questType: "mob_kills" | "pvp_kills";
+    killsRequired: number;
+    killsCompleted: number;
+    timeLimitMinutes: number;
+    startedAt: number;
+    expiresAt: number;
+    completedAt: number | null;
+    failedAt: number | null;
+    rewardExp: number;
+    rewardTokens: number;
+    timeRemaining: number;
+  } | null;
+  setDailyQuest: (quest: GameStore["dailyQuest"]) => void;
+  /** All active quests for current sector */
+  activeQuests: Array<GameStore["dailyQuest"]>;
+  setActiveQuests: (quests: GameStore["activeQuests"]) => void;
+  /** Quest availability for current sector */
+  questAvailable: boolean;
+  setQuestAvailable: (available: boolean) => void;
+  /** Current sector quest info (when quest is null but we have sector info) */
+  currentSectorQuestInfo: {
+    sectorId: string;
+    sectorName: string;
+    available: boolean; // Общая доступность (для обратной совместимости)
+    completedAt: number | null; // Время завершения последнего квеста (для обратной совместимости)
+    timeUntilReset: number | null;
+    questInfo?: {
+      mob_kills?: {
+        available: boolean;
+        completedAt: number | null;
+        timeUntilReset: number | null;
+      };
+      pvp_kills?: {
+        available: boolean;
+        completedAt: number | null;
+        timeUntilReset: number | null;
+      };
+    };
+  } | null;
+  setCurrentSectorQuestInfo: (info: GameStore["currentSectorQuestInfo"]) => void;
+  /** Current sector id (set by Phaser on sector apply); used to ignore quest_progress for other sectors */
+  currentSectorId: string | null;
+  setCurrentSectorId: (id: string | null) => void;
+  /** Whether PvP is allowed in the current sector (false = white sector; hide PvP quest) */
+  currentSectorPvpAllowed: boolean;
+  setCurrentSectorPvpAllowed: (value: boolean) => void;
+  /** Quest completion celebration (shows fanfare) */
+  questCompleteReward: { exp: number; tokens: number } | null;
+  setQuestCompleteReward: (reward: GameStore["questCompleteReward"]) => void;
   error: string | null;
   authError: string | null;
   loadSession: () => Promise<void>;
@@ -235,6 +289,20 @@ export const useGameStore = create<GameStore>()(
   levelUpCelebration: null,
   pendingRespawn: false,
   vengeanceRespawnTargetUserId: null,
+  dailyQuest: null,
+  setDailyQuest: (quest) => set({ dailyQuest: quest }),
+  activeQuests: [],
+  setActiveQuests: (quests) => set({ activeQuests: quests }),
+  questAvailable: true,
+  setQuestAvailable: (available: boolean) => set({ questAvailable: available }),
+  currentSectorQuestInfo: null,
+  setCurrentSectorQuestInfo: (info) => set({ currentSectorQuestInfo: info }),
+  currentSectorId: null,
+  setCurrentSectorId: (id) => set({ currentSectorId: id }),
+  currentSectorPvpAllowed: false,
+  setCurrentSectorPvpAllowed: (value) => set({ currentSectorPvpAllowed: value }),
+  questCompleteReward: null,
+  setQuestCompleteReward: (reward) => set({ questCompleteReward: reward }),
   error: null,
   authError: null,
   playerInSafeZone: false,

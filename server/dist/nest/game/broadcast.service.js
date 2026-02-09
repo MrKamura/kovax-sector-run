@@ -50,6 +50,7 @@ let BroadcastService = class BroadcastService {
                 typeof e.huntedExpiresAt === "number" &&
                 e.huntedExpiresAt > now),
             huntedExpiresAt: e.huntedExpiresAt,
+            hasPvpQuest: e.hasPvpQuest ?? false,
         }));
         const payload = JSON.stringify({
             type: "presence",

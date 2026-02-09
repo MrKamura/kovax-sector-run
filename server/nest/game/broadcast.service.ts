@@ -47,6 +47,7 @@ export class BroadcastService {
           e.huntedExpiresAt > now
         ),
         huntedExpiresAt: e.huntedExpiresAt,
+        hasPvpQuest: e.hasPvpQuest ?? false,
       }));
     const payload = JSON.stringify({
       type: "presence",
