@@ -62,6 +62,7 @@ export interface GatewayResolvedServices {
   messageHandler: MessageHandlerService;
   player: PlayerService;
   quest: QuestService;
+  tournament?: import("./tournament.service").TournamentService;
 }
 
 @Injectable()

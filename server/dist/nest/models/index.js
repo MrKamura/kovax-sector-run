@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.UserQuestCompletionModel = exports.DailyQuestModel = exports.SectorModel = exports.ChatMessageModel = exports.PlayerModel = exports.SessionModel = exports.UserModel = void 0;
+exports.UserTitleModel = exports.TournamentWinnerModel = exports.PlayerTournamentStatsModel = exports.UserQuestCompletionModel = exports.DailyQuestModel = exports.SectorModel = exports.ChatMessageModel = exports.PlayerModel = exports.SessionModel = exports.UserModel = void 0;
 exports.initModels = initModels;
 const user_model_1 = require("./user.model");
 Object.defineProperty(exports, "UserModel", { enumerable: true, get: function () { return user_model_1.UserModel; } });
@@ -16,6 +16,12 @@ const daily_quest_model_1 = require("./daily-quest.model");
 Object.defineProperty(exports, "DailyQuestModel", { enumerable: true, get: function () { return daily_quest_model_1.DailyQuestModel; } });
 const user_quest_completion_model_1 = require("./user-quest-completion.model");
 Object.defineProperty(exports, "UserQuestCompletionModel", { enumerable: true, get: function () { return user_quest_completion_model_1.UserQuestCompletionModel; } });
+const player_tournament_stats_model_1 = require("./player-tournament-stats.model");
+Object.defineProperty(exports, "PlayerTournamentStatsModel", { enumerable: true, get: function () { return player_tournament_stats_model_1.PlayerTournamentStatsModel; } });
+const tournament_winner_model_1 = require("./tournament-winner.model");
+Object.defineProperty(exports, "TournamentWinnerModel", { enumerable: true, get: function () { return tournament_winner_model_1.TournamentWinnerModel; } });
+const user_title_model_1 = require("./user-title.model");
+Object.defineProperty(exports, "UserTitleModel", { enumerable: true, get: function () { return user_title_model_1.UserTitleModel; } });
 function initModels(sequelize) {
     (0, user_model_1.initUserModel)(sequelize);
     (0, session_model_1.initSessionModel)(sequelize);
@@ -24,4 +30,7 @@ function initModels(sequelize) {
     (0, sector_model_1.initSectorModel)(sequelize);
     (0, daily_quest_model_1.initDailyQuestModel)(sequelize);
     (0, user_quest_completion_model_1.initUserQuestCompletionModel)(sequelize);
+    (0, player_tournament_stats_model_1.initPlayerTournamentStatsModel)(sequelize);
+    (0, tournament_winner_model_1.initTournamentWinnerModel)(sequelize);
+    (0, user_title_model_1.initUserTitleModel)(sequelize);
 }

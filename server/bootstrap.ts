@@ -16,6 +16,7 @@ import { ChatService } from "./nest/game/chat.service";
 import { MessageHandlerService } from "./nest/game/message-handler.service";
 import { PlayerService } from "./nest/game/player.service";
 import { QuestService } from "./nest/game/quest.service";
+import { TournamentService } from "./nest/game/tournament.service";
 import { DbService } from "./nest/game/db.service";
 import { TICK_INTERVAL_MS } from "./nest/config/constants";
 
@@ -76,6 +77,8 @@ async function bootstrap() {
     }
   }
 
+  const resolvedTournament = new TournamentService(resolvedDb);
+
   // Pass resolved services so gateway works when Nest does not inject deps (createApplicationContext)
   gameGateway.attachToServer(server, upgradeHandler, {
     db: resolvedDb,
@@ -86,6 +89,7 @@ async function bootstrap() {
     messageHandler: nestApp.get(MessageHandlerService),
     player: nestApp.get(PlayerService),
     quest: resolvedQuest,
+    tournament: resolvedTournament,
   });
   setInterval(() => {
     runWorldTick(
@@ -100,6 +104,22 @@ async function bootstrap() {
       worldTickState
     );
   }, TICK_INTERVAL_MS);
+
+  let lastFinalizedWeekStart: string | null = null;
+  setInterval(() => {
+    const now = new Date();
+    const moscow = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+    const isMonday = moscow.getUTCDay() === 1;
+    const hour = moscow.getUTCHours();
+    if (isMonday && hour === 0) {
+      const weekStart = resolvedTournament.getWeekStartUTC();
+      const key = weekStart.toISOString();
+      if (lastFinalizedWeekStart !== key) {
+        lastFinalizedWeekStart = key;
+        void resolvedTournament.finalizeWeek();
+      }
+    }
+  }, 60 * 60 * 1000);
 
   server.listen(port, () => {
     console.log(`Server ready on http://localhost:${port}`);

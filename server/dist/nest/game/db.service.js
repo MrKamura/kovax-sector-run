@@ -69,6 +69,9 @@ let DbService = class DbService {
         this.Sector = models_1.SectorModel;
         this.DailyQuest = models_1.DailyQuestModel;
         this.UserQuestCompletion = models_1.UserQuestCompletionModel;
+        this.PlayerTournamentStats = models_1.PlayerTournamentStatsModel;
+        this.TournamentWinner = models_1.TournamentWinnerModel;
+        this.UserTitle = models_1.UserTitleModel;
     }
     async onModuleDestroy() {
         await this.sequelize.close();

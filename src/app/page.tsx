@@ -19,6 +19,7 @@ import { ChatPanel } from "./components/ChatPanel";
 import { PlayerPanel } from "./components/PlayerPanel";
 import { QuestPanel } from "./components/QuestPanel";
 import { QuestButton } from "./components/QuestButton";
+import { TournamentButton } from "./components/TournamentButton";
 import { QuestCompleteOverlay } from "./components/QuestCompleteOverlay";
 import {
   useChat,
@@ -224,6 +225,7 @@ export default function Home() {
                 >
                   Меню
                 </button>
+                <TournamentButton />
                 <QuestButton />
                 <div className={styles.huntBuffs}>
                   {vengeance && vengeance.expiresAt > Date.now() && (

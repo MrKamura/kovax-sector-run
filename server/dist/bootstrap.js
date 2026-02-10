@@ -53,6 +53,7 @@ const chat_service_1 = require("./nest/game/chat.service");
 const message_handler_service_1 = require("./nest/game/message-handler.service");
 const player_service_1 = require("./nest/game/player.service");
 const quest_service_1 = require("./nest/game/quest.service");
+const tournament_service_1 = require("./nest/game/tournament.service");
 const db_service_1 = require("./nest/game/db.service");
 const constants_1 = require("./nest/config/constants");
 const port = Number(process.env.PORT || 3000);
@@ -106,6 +107,7 @@ async function bootstrap() {
             console.log("Bootstrap: resolvedQuest.db.DailyQuest initialized successfully");
         }
     }
+    const resolvedTournament = new tournament_service_1.TournamentService(resolvedDb);
     // Pass resolved services so gateway works when Nest does not inject deps (createApplicationContext)
     gameGateway.attachToServer(server, upgradeHandler, {
         db: resolvedDb,
@@ -116,6 +118,7 @@ async function bootstrap() {
         messageHandler: nestApp.get(message_handler_service_1.MessageHandlerService),
         player: nestApp.get(player_service_1.PlayerService),
         quest: resolvedQuest,
+        tournament: resolvedTournament,
     });
     setInterval(() => {
         (0, world_tick_service_1.runWorldTick)({
@@ -127,6 +130,21 @@ async function bootstrap() {
             quest: resolvedQuest,
         }, worldTickState);
     }, constants_1.TICK_INTERVAL_MS);
+    let lastFinalizedWeekStart = null;
+    setInterval(() => {
+        const now = new Date();
+        const moscow = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+        const isMonday = moscow.getUTCDay() === 1;
+        const hour = moscow.getUTCHours();
+        if (isMonday && hour === 0) {
+            const weekStart = resolvedTournament.getWeekStartUTC();
+            const key = weekStart.toISOString();
+            if (lastFinalizedWeekStart !== key) {
+                lastFinalizedWeekStart = key;
+                void resolvedTournament.finalizeWeek();
+            }
+        }
+    }, 60 * 60 * 1000);
     server.listen(port, () => {
         console.log(`Server ready on http://localhost:${port}`);
     });

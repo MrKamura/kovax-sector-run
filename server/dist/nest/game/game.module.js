@@ -15,6 +15,7 @@ const broadcast_service_1 = require("./broadcast.service");
 const chat_service_1 = require("./chat.service");
 const player_service_1 = require("./player.service");
 const quest_service_1 = require("./quest.service");
+const tournament_service_1 = require("./tournament.service");
 const world_tick_service_1 = require("./world-tick.service");
 const message_handler_service_1 = require("./message-handler.service");
 const game_gateway_1 = require("./game.gateway");
@@ -31,10 +32,11 @@ exports.GameModule = GameModule = __decorate([
             chat_service_1.ChatService,
             player_service_1.PlayerService,
             quest_service_1.QuestService,
+            tournament_service_1.TournamentService,
             world_tick_service_1.WorldTickService,
             message_handler_service_1.MessageHandlerService,
             game_gateway_1.GameGateway,
         ],
-        exports: [game_gateway_1.GameGateway, world_tick_service_1.WorldTickService, db_service_1.DbService, quest_service_1.QuestService],
+        exports: [game_gateway_1.GameGateway, world_tick_service_1.WorldTickService, db_service_1.DbService, quest_service_1.QuestService, tournament_service_1.TournamentService],
     })
 ], GameModule);

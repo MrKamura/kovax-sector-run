@@ -46,6 +46,7 @@ export interface HandlerServices {
   chat: ChatService;
   player: PlayerService;
   quest: QuestService;
+  tournament?: import("./tournament.service").TournamentService;
   db: DbService;
 }
 
@@ -91,6 +92,7 @@ export class MessageHandlerService {
       chat: resolved?.chat ?? this.chat,
       player: resolved?.player ?? this.player,
       quest: resolved?.quest ?? this.quest,
+      tournament: resolved?.tournament,
       db: resolved?.db ?? this.db,
     };
 
@@ -160,6 +162,10 @@ export class MessageHandlerService {
     }
     if (message.type === "chat_history_request") {
       await this.handleChatHistoryRequest(user, message, socket, services);
+      return;
+    }
+    if (message.type === "tournament_leaderboard") {
+      await this.handleTournamentLeaderboard(user, message, socket, services);
       return;
     }
     if (message.type === "request_exit") {
@@ -275,6 +281,7 @@ export class MessageHandlerService {
         expToNext: expToNextLevel(level),
         resources: nextResources,
       }, services.presence);
+      if (services.tournament) void services.tournament.recordDeath(user.id, false);
       services.broadcast.sendDeathUpdate(user.id, {
         lostExp,
         lostTokens,
@@ -1115,9 +1122,10 @@ export class MessageHandlerService {
             console.error("Failed to award exp:", err);
           }
           
-          // Отслеживаем убийство моба для квеста
+          // Отслеживаем убийство моба для квеста и турнира
           if (presenceEntry?.sectorId) {
             try {
+              if (services.tournament) void services.tournament.recordMobKill(user.id, enemy.level);
               const questProgress = await services.quest.incrementKills(user.id, presenceEntry.sectorId);
               if (questProgress) {
                 // Добавляем название сектора
@@ -1150,6 +1158,7 @@ export class MessageHandlerService {
                     // Не выдаем награду за квест из другого сектора, продолжаем обработку
                   } else {
                     console.log(`[MessageHandler] Completing quest ${questProgress.id} for sector ${questProgress.sectorId}`);
+                    if (services.tournament) void services.tournament.recordQuestComplete(user.id);
                     const reward = await services.quest.completeQuest(questProgress.id, user.id, presenceEntry.sectorId, presenceEntry.shipChoice);
                     if (reward) {
                       // Получаем обновленный квест с completedAt для отправки клиенту
@@ -1454,6 +1463,44 @@ export class MessageHandlerService {
           scope: "sector",
           sectorId,
           messages,
+        })
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  private async handleTournamentLeaderboard(
+    _user: ResolvedUser,
+    message: Record<string, unknown>,
+    socket: GameSocket,
+    services: HandlerServices
+  ): Promise<void> {
+    const tournament = services.tournament;
+    if (!tournament) return;
+    const validCategories = [
+      "rating_total",
+      "rating_week",
+      "pve_total_kills",
+      "pve_weekly_kills",
+      "pve_best_streak",
+      "pve_quests_week",
+      "pvp_total_kills",
+      "pvp_weekly_kills",
+      "pvp_best_streak",
+      "pvp_revenge_week",
+    ];
+    const category = typeof message.category === "string" && validCategories.includes(message.category)
+      ? message.category
+      : "rating_total";
+    const limit = Math.min(50, Math.max(10, Number(message.limit) || 50));
+    const list = await tournament.getLeaderboard(category as import("./tournament.constants").TournamentCategory, limit);
+    try {
+      socket.send(
+        JSON.stringify({
+          type: "tournament_leaderboard",
+          category,
+          list,
         })
       );
     } catch {
@@ -1864,6 +1911,14 @@ export class MessageHandlerService {
         services.broadcast.broadcastChat(chatEntry, "global", "", services.presence);
       } catch {
         // ignore
+      }
+      // Турнир: PvP убийство и месть
+      if (services.tournament) {
+        void services.tournament.recordPvpKill(user.id, victim?.level ?? 1);
+        if (attacker.vengeanceTargetUserId === targetUserId && attacker.vengeanceExpiresAt && attacker.vengeanceExpiresAt > now) {
+          void services.tournament.recordRevengeKill(user.id);
+        }
+        if (death) void services.tournament.recordDeath(targetUserId, true);
       }
       // Отслеживаем убийство игрока для PvP квеста убийцы
       if (attacker?.sectorId) {

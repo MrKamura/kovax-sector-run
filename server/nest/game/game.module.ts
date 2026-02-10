@@ -6,6 +6,7 @@ import { BroadcastService } from "./broadcast.service";
 import { ChatService } from "./chat.service";
 import { PlayerService } from "./player.service";
 import { QuestService } from "./quest.service";
+import { TournamentService } from "./tournament.service";
 import { WorldTickService } from "./world-tick.service";
 import { MessageHandlerService } from "./message-handler.service";
 import { GameGateway } from "./game.gateway";
@@ -19,10 +20,11 @@ import { GameGateway } from "./game.gateway";
     ChatService,
     PlayerService,
     QuestService,
+    TournamentService,
     WorldTickService,
     MessageHandlerService,
     GameGateway,
   ],
-  exports: [GameGateway, WorldTickService, DbService, QuestService],
+  exports: [GameGateway, WorldTickService, DbService, QuestService, TournamentService],
 })
 export class GameModule {}

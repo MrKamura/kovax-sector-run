@@ -11,6 +11,10 @@ export function setGlobalSocket(socket: WebSocket | null) {
   globalSocket = socket;
 }
 
+export function getGlobalSocket(): WebSocket | null {
+  return globalSocket;
+}
+
 interface QuestInfo {
   sectorId: string;
   sectorName: string;
