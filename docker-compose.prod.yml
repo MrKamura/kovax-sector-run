@@ -27,7 +27,7 @@ services:
       - kovax-network
 
   app:
-    image: ${IMAGE_APP:-kovax-game-app:latest}
+    image: ${IMAGE_APP:-ghcr.io/mrkamura/kovax-game-app:latest}
     container_name: kovax-app
     restart: unless-stopped
     depends_on:

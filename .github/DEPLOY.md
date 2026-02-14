@@ -21,7 +21,7 @@ ssh root@147.45.237.60
 cd /var/www/kovax-game
 
 # Укажите ваш GitHub username (замените YOUR_USERNAME)
-export IMAGE_APP=ghcr.io/YOUR_USERNAME/kovax-game-app:latest
+export IMAGE_APP=ghcr.io/YOUR_USERNAME_LOWERCASE/kovax-game-app:latest
 
 # Для приватного образа — логин (создайте Personal Access Token с read:packages)
 echo $GITHUB_TOKEN | docker login ghcr.io -u YOUR_USERNAME --password-stdin
