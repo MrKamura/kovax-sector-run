@@ -123,7 +123,7 @@ export function initDailyQuestModel(sequelize: Sequelize): typeof DailyQuestMode
       sequelize,
       modelName: "DailyQuest",
       tableName: "daily_quests",
-      underscored: false,
+      underscored: true,
       timestamps: true,
     }
   );
