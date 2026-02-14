@@ -43,9 +43,16 @@ async function bootstrap() {
   const server = http.createServer((req, res) => handle(req, res));
 
   console.log("Bootstrap: starting Nest...");
-  const nestApp = await NestFactory.createApplicationContext(AppModule, {
-    logger: false,
-  });
+  let nestApp;
+  try {
+    nestApp = await NestFactory.createApplicationContext(AppModule, {
+      logger: ["error", "warn"],
+    });
+    console.log("Bootstrap: Nest context created");
+  } catch (err) {
+    console.error("Bootstrap: Nest init failed:", err);
+    throw err;
+  }
   const db = nestApp.get(DbService);
   const sectorService = nestApp.get(SectorService);
   await sectorService.loadSectorsFromDb(db);
