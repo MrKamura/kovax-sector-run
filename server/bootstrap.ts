@@ -3,6 +3,15 @@ import * as dotenv from "dotenv";
 dotenv.config({ path: ".env.local" });
 dotenv.config();
 
+process.on("uncaughtException", (err) => {
+  console.error("UncaughtException:", err);
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("UnhandledRejection:", reason, promise);
+  process.exit(1);
+});
+
 import http from "http";
 import next from "next";
 import { NestFactory } from "@nestjs/core";
@@ -24,13 +33,16 @@ const port = Number(process.env.PORT || 3000);
 const dev = process.env.NODE_ENV !== "production";
 
 async function bootstrap() {
+  console.log("Bootstrap: starting Next.js...");
   const app = next({ dev, port });
   const handle = app.getRequestHandler();
   await app.prepare();
+  console.log("Bootstrap: Next.js ready");
 
   const upgradeHandler = app.getUpgradeHandler();
   const server = http.createServer((req, res) => handle(req, res));
 
+  console.log("Bootstrap: starting Nest...");
   const nestApp = await NestFactory.createApplicationContext(AppModule, {
     logger: false,
   });
