@@ -1,6 +1,25 @@
 -- 009_add_daily_quests.sql - Упрощенная версия
 -- Добавляем поддержку нескольких типов квестов
 
+-- 0. Создаем таблицу если не существует (для чистой БД)
+CREATE TABLE IF NOT EXISTS daily_quests (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  sector_id VARCHAR(255) NOT NULL,
+  quest_type VARCHAR(50) NOT NULL DEFAULT 'mob_kills',
+  kills_required INTEGER NOT NULL DEFAULT 20,
+  kills_completed INTEGER NOT NULL DEFAULT 0,
+  time_limit_minutes INTEGER NOT NULL DEFAULT 15,
+  started_at TIMESTAMP NOT NULL,
+  expires_at TIMESTAMP NOT NULL,
+  completed_at TIMESTAMP,
+  failed_at TIMESTAMP,
+  reward_exp INTEGER NOT NULL DEFAULT 250,
+  reward_tokens INTEGER NOT NULL DEFAULT 75,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+
 -- 1. Удаляем старые индексы
 DROP INDEX IF EXISTS daily_quests_user_id_sector_id_started_at_key;
 
