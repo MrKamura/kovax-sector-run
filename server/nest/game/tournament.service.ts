@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { Op } from "sequelize";
-import type { DbService } from "./db.service";
+import { DbService } from "./db.service";
 import type { TournamentCategory } from "./tournament.constants";
 import {
   TOURNAMENT_CATEGORY_COLUMN as COL_MAP,
