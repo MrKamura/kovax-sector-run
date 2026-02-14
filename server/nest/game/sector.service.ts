@@ -286,7 +286,8 @@ export class SectorService {
     return { level: last.level, grade: last.grade };
   }
 
-  private getSectorByLevelAndGrade(level: number, grade: number): Sector | null {
+  /** Returns sector by level and grade (1=white, 2=green, etc.). Public for spawn logic. */
+  getSectorByLevelAndGrade(level: number, grade: number): Sector | null {
     const safeLevel = SectorService.normalizeSectorLevel(level);
     const safeGrade = Math.max(1, Math.min(5, grade));
     for (const s of this.sectors.values()) {

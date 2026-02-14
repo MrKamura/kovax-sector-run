@@ -195,12 +195,16 @@ export class GameGateway {
       }
     }
 
+    // Новые игроки (уровень 1) всегда появляются в белом секторе L1-01
+    const whiteSector = sectorService.getSectorByLevelAndGrade(1, 1);
     const assignedSector =
       existingPresence && sectorService.sectors.has(existingPresence.sectorId)
         ? sectorService.sectors.get(existingPresence.sectorId)!
-        : savedSectorId && sectorService.sectors.has(savedSectorId)
-          ? sectorService.sectors.get(savedSectorId)!
-          : sectorService.findOrCreateSector(1, undefined, presence);
+        : level === 1
+          ? (whiteSector ?? sectorService.findOrCreateSector(1, undefined, presence))
+          : savedSectorId && sectorService.sectors.has(savedSectorId)
+            ? sectorService.sectors.get(savedSectorId)!
+            : (whiteSector ?? sectorService.findOrCreateSector(1, undefined, presence));
 
     (ws as GameSocket).userId = user.id;
     (ws as GameSocket).sectorId = assignedSector.id;

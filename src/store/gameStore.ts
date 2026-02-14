@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import { DEFAULT_PLAYER } from "@/lib/gameDefaults";
 import { getSkillDef } from "@/lib/skills";
 import {
   getEffectiveEnergyCost,
@@ -184,7 +183,7 @@ type GameStore = {
   damagePlayer: (amount: number) => Promise<void>;
   craftRecipe: (recipeId: string) => Promise<void>;
   upgradeShelter: () => Promise<void>;
-  applyPlayerUpdate: (patch: Partial<PlayerState>) => void;
+  applyPlayerUpdate: (patch: Partial<PlayerState> & { previousLevel?: number }) => void;
   addSkill: (skill: string) => Promise<void>;
   setSkillSlots: (slots: string[]) => Promise<void>;
   triggerSkillSlot: (slotIndex: number) => Promise<boolean>;
@@ -573,11 +572,14 @@ export const useGameStore = create<GameStore>()(
     set((state) => {
       if (!state.player) return;
       const wasDead = (state.player.health ?? 1) <= 0;
+      const prevLevel =
+        typeof patch.previousLevel === "number"
+          ? patch.previousLevel
+          : (state.player.level ?? 1);
+      const newLevel = typeof patch.level === "number" ? patch.level : null;
       Object.assign(state.player, patch);
       const shouldClearDeath = (patch.health ?? state.player.health) > 0;
       const isDead = (state.player.health ?? 1) <= 0;
-      const newLevel = typeof patch.level === "number" ? patch.level : null;
-      const prevLevel = state.player.level ?? 1;
       if (shouldClearDeath) state.deathInfo = null;
       if (newLevel != null && newLevel > prevLevel) {
         state.levelUpCelebration = { level: newLevel, previousLevel: prevLevel };
