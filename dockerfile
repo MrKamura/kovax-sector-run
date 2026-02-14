@@ -56,6 +56,7 @@ USER nextjs
 EXPOSE 4000
 ENV NODE_ENV=production
 ENV PORT=4000
+ENV NODE_OPTIONS="--trace-uncaught"
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
-CMD ["node", "server/dist/bootstrap.js"]
+CMD ["node", "server/bootstrap-loader.js"]
