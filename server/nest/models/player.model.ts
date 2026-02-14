@@ -14,6 +14,12 @@ export interface MonsterProgressEntry {
   damage?: number;
 }
 
+export interface PlayerMutationState {
+  purchasedSkills: string[];
+  skillLevels: Record<string, number>;
+  upgradeInProgress: { skillId: string; endsAt: number } | null;
+}
+
 export interface PlayerAttributes {
   id?: number;
   userId: number;
@@ -26,6 +32,7 @@ export interface PlayerAttributes {
   expToNext: number;
   damage: number;
   skills: string[];
+  mutations?: PlayerMutationState;
   monsterProgress: Record<string, MonsterProgressEntry>;
   lastHealthAt: Date | null;
   posX: number;
@@ -56,6 +63,7 @@ export class PlayerModel extends Model<PlayerAttributes, PlayerCreationAttribute
   declare expToNext: number;
   declare damage: number;
   declare skills: string[];
+  declare mutations: PlayerMutationState;
   declare monsterProgress: Record<string, MonsterProgressEntry>;
   declare lastHealthAt: Date | null;
   declare posX: number;
@@ -128,6 +136,11 @@ export function initPlayerModel(sequelize: Sequelize): typeof PlayerModel {
         type: DataTypes.JSONB,
         allowNull: false,
         defaultValue: [],
+      },
+      mutations: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        defaultValue: { purchasedSkills: [], skillLevels: {}, upgradeInProgress: null },
       },
       monsterProgress: {
         type: DataTypes.JSONB,

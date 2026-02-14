@@ -10,7 +10,7 @@ export const DEFAULT_PLAYER = {
   exp: 0,
   expToNext: 100,
   damage: 18,
-  skills: ["continuous_laser", "continuous_laser_super", "immunity_5s", "movement_speed_5s", "healing_5s", "fury_7s", "teleport_3s", "gravity_pit"] as string[],
+  skills: ["continuous_laser", "immunity_5s", "movement_speed_5s", "healing_5s", "fury_7s", "teleport_3s", "gravity_pit"] as string[],
   lastHealthAt: null as Date | null,
   posX: 0,
   posY: 0,

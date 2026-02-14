@@ -45,20 +45,75 @@ const statsForLevel = (level: number, shipChoice?: string | null) => {
   };
 };
 
-/** Ensure all default skills are in player.skills; merge and persist so new skills appear for existing players. */
-const ensureDefaultSkillsIncluded = async (player: Player) => {
-  const defaultSkills = DEFAULT_PLAYER.skills;
-  const raw = player.get("skills");
-  const currentSkills: string[] = Array.isArray(raw) ? (raw as string[]) : [];
-  const merged: string[] = [...currentSkills];
-  for (const id of defaultSkills) {
-    if (!merged.includes(id) && merged.length < 9) merged.push(id);
+/** Mutation state shape (matches server/nest/models/player.model). */
+type MutationState = {
+  purchasedSkills: string[];
+  skillLevels: Record<string, number>;
+  upgradeInProgress: { skillId: string; endsAt: number } | null;
+};
+
+const defaultMutationState = (): MutationState => ({
+  purchasedSkills: [],
+  skillLevels: {},
+  upgradeInProgress: null,
+});
+
+const REMOVED_SKILL_IDS = ["continuous_laser_super"];
+
+/** Ensure mutations column exists; migrate existing players so current skills count as purchased. Remove discontinued skills. */
+const ensureMutationState = async (player: Player) => {
+  const raw = player.get("mutations") as MutationState | undefined;
+  const current = raw && Array.isArray(raw.purchasedSkills)
+    ? {
+        purchasedSkills: raw.purchasedSkills.filter((id) => !REMOVED_SKILL_IDS.includes(id)),
+        skillLevels: raw.skillLevels && typeof raw.skillLevels === "object" ? raw.skillLevels : {},
+        upgradeInProgress: raw.upgradeInProgress ?? null,
+      }
+    : defaultMutationState();
+  const removedFromLevels = { ...current.skillLevels };
+  for (const id of REMOVED_SKILL_IDS) delete removedFromLevels[id];
+  const next: MutationState = {
+    purchasedSkills: current.purchasedSkills,
+    skillLevels: removedFromLevels,
+    upgradeInProgress:
+      current.upgradeInProgress && !REMOVED_SKILL_IDS.includes(current.upgradeInProgress.skillId)
+        ? current.upgradeInProgress
+        : null,
+  };
+  const skillsOnlyPurchased = Array.from(
+    { length: 9 },
+    (_, i) => next.purchasedSkills[i] ?? ""
+  );
+  const existingSlots = Array.isArray(player.skills) ? player.skills : [];
+  let changed =
+    JSON.stringify(next) !== JSON.stringify({ ...current, skillLevels: removedFromLevels }) ||
+    (!raw && next.purchasedSkills.length === 0 && Object.keys(next.skillLevels).length === 0);
+  if (skillsOnlyPurchased.some((s, i) => (existingSlots[i] ?? "") !== s)) {
+    player.set("skills", skillsOnlyPurchased);
+    changed = true;
   }
-  const final = merged.slice(0, 9);
-  if (final.length !== currentSkills.length || final.some((s, i) => s !== currentSkills[i])) {
-    player.set("skills", final);
+  if (changed) {
+    player.set("mutations", next);
     await player.save();
   }
+};
+
+/** Apply completed upgrade: if upgradeInProgress.endsAt <= now, level up and clear. */
+export const applyMutationCompletion = async (player: Player): Promise<boolean> => {
+  const raw = player.get("mutations") as MutationState | undefined;
+  if (!raw?.upgradeInProgress) return false;
+  const { skillId, endsAt } = raw.upgradeInProgress;
+  if (endsAt > Date.now()) return false;
+  const levels = { ...(raw.skillLevels && typeof raw.skillLevels === "object" ? raw.skillLevels : {}) };
+  levels[skillId] = Math.min(5, (levels[skillId] ?? 0) + 1);
+  const next: MutationState = {
+    purchasedSkills: raw.purchasedSkills ?? [],
+    skillLevels: levels,
+    upgradeInProgress: null,
+  };
+  player.set("mutations", next);
+  await player.save();
+  return true;
 };
 
 const ensureHealthDefaults = async (player: Player, shipChoice?: string | null) => {
@@ -88,21 +143,7 @@ const ensureHealthDefaults = async (player: Player, shipChoice?: string | null) 
     player.damage = desiredDamage;
     changed = true;
   }
-  const defaultSkills = DEFAULT_PLAYER.skills;
-  const currentSkills = Array.isArray(player.skills) ? player.skills : [];
-  if (currentSkills.length === 0) {
-    player.skills = [...defaultSkills];
-    changed = true;
-  } else {
-    const merged = [...currentSkills];
-    for (const id of defaultSkills) {
-      if (!merged.includes(id) && merged.length < 9) merged.push(id);
-    }
-    if (merged.length !== currentSkills.length || merged.some((s, i) => s !== currentSkills[i])) {
-      player.skills = merged.slice(0, 9);
-      changed = true;
-    }
-  }
+  /* Skills are managed by the mutation system (purchase with tokens); do not overwrite here. */
   if (player.maxHealth == null || player.maxHealth !== desiredMaxHealth) {
     player.maxHealth = desiredMaxHealth;
     changed = true;
@@ -262,7 +303,8 @@ export const getOrCreatePlayer = async (
 
   const existing = await Player.findOne({ where: { userId } });
   if (existing) {
-    await ensureDefaultSkillsIncluded(existing);
+    await ensureMutationState(existing);
+    await applyMutationCompletion(existing);
     await ensureMonsterProgress(existing, shipChoice);
     if (applyRegen) {
       await applyHealthRegen(existing, shipChoice);
@@ -282,7 +324,9 @@ export const getOrCreatePlayer = async (
     userId,
     lastCollectedAt: null,
     monsterProgress: {},
-  });
+    skills: [], // Mutation: skills are purchased with tokens; panel starts empty
+    mutations: defaultMutationState(),
+  } as any);
   await ensureMonsterProgress(created, shipChoice);
   if (applyRegen) {
     await applyHealthRegen(created, shipChoice);

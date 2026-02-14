@@ -22,9 +22,21 @@ export const POST = async (request: Request) => {
     return NextResponse.json({ error: "User ID not found." }, { status: 500 });
   }
   const player = await getOrCreatePlayer(user.id, user.shipChoice);
-  const skills = Array.isArray(player.skills) ? player.skills : [];
-  if (!skills.includes(skill)) {
-    player.skills = [...skills, skill];
+  const mutations = (player.get("mutations") as { purchasedSkills?: string[] } | undefined);
+  const purchased = new Set(mutations?.purchasedSkills ?? []);
+  if (!purchased.has(skill)) {
+    return NextResponse.json(
+      { error: "Навык нужно сначала купить в разделе Мутации." },
+      { status: 400 }
+    );
+  }
+  const skills = Array.from(Array.isArray(player.skills) ? player.skills : [], (s, i) => s || "");
+  const filled = skills.slice(0, 9);
+  while (filled.length < 9) filled.push("");
+  if (!filled.includes(skill)) {
+    const idx = filled.indexOf("");
+    if (idx !== -1) filled[idx] = skill;
+    player.skills = filled;
     await player.save();
   }
   return NextResponse.json({ player: player.toJSON() });
@@ -53,7 +65,10 @@ export const PUT = async (request: Request) => {
     return NextResponse.json({ error: "User ID not found." }, { status: 500 });
   }
   const player = await getOrCreatePlayer(user.id, user.shipChoice);
-  player.skills = skills;
+  const mutations = (player.get("mutations") as { purchasedSkills?: string[] } | undefined);
+  const purchased = new Set(mutations?.purchasedSkills ?? []);
+  const validSkills = skills.map((id) => (id && purchased.has(id) ? id : ""));
+  player.skills = validSkills;
   await player.save();
   return NextResponse.json({ player: player.toJSON() });
 };

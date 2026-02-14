@@ -62,6 +62,11 @@ function initPlayerModel(sequelize) {
             allowNull: false,
             defaultValue: [],
         },
+        mutations: {
+            type: sequelize_1.DataTypes.JSONB,
+            allowNull: true,
+            defaultValue: { purchasedSkills: [], skillLevels: {}, upgradeInProgress: null },
+        },
         monsterProgress: {
             type: sequelize_1.DataTypes.JSONB,
             allowNull: false,

@@ -979,7 +979,11 @@ export class MessageHandlerService {
       (!zone || zone.expiresAt <= Date.now() || !services.sectorService.isInsideSafeZone(zone, entry.x, entry.y))
     ) {
       const durationMs = Math.min(15000, Math.max(1000, Number(message.durationMs) || 7000));
+      const furyDamageMult = Number(message.furyDamageMult);
       entry.furyExpiresAt = Date.now() + durationMs;
+      entry.furyDamageMult = Number.isFinite(furyDamageMult) && furyDamageMult >= 1 && furyDamageMult <= 2
+        ? furyDamageMult
+        : FURY_DAMAGE_MULT;
       services.broadcast.broadcastPresence(entry.sectorId, services.presence);
     }
   }
@@ -997,13 +1001,15 @@ export class MessageHandlerService {
       const margin = 100;
       const x = Math.min(sector.config.width - margin, Math.max(margin, entry.x));
       const y = Math.min(sector.config.height - margin, Math.max(margin, entry.y));
+      const durationMs = Math.min(15000, Math.max(2000, Number(message.durationMs) || GRAVITY_PIT_DURATION_MS));
+      const radius = Math.min(300, Math.max(80, Number(message.radius) || GRAVITY_PIT_RADIUS));
       if (!Array.isArray(sector.world.gravityPits)) sector.world.gravityPits = [];
       sector.world.gravityPits.push({
         id: `gp-${Date.now()}-${randInt(100, 999)}`,
         x,
         y,
-        radius: GRAVITY_PIT_RADIUS,
-        expiresAt: Date.now() + GRAVITY_PIT_DURATION_MS,
+        radius,
+        expiresAt: Date.now() + durationMs,
         ownerUserId: user.id,
       });
       services.broadcast.broadcastWorld(entry.sectorId, services.sectorService, services.presence);
@@ -1028,6 +1034,7 @@ export class MessageHandlerService {
       const width = sector.config.width;
       const height = sector.config.height;
       const margin = 120;
+      const castTimeMs = Math.min(5000, Math.max(500, Number(message.durationMs) || 3000));
       setTimeout(() => {
         const current = services.presence.getEntry(user.id);
         const currentSector = current ? services.sectorService.sectors.get(current.sectorId) : null;
@@ -1044,7 +1051,7 @@ export class MessageHandlerService {
         } catch {
           // client may have disconnected
         }
-      }, 3000);
+      }, castTimeMs);
     }
   }
 
@@ -1064,7 +1071,7 @@ export class MessageHandlerService {
     let damage = Math.min(requestedDamage || 0, damageCap);
     const now = Date.now();
     if (presenceEntry?.furyExpiresAt && presenceEntry.furyExpiresAt > now) {
-      damage = Math.round(damage * FURY_DAMAGE_MULT);
+      damage = Math.round(damage * (presenceEntry.furyDamageMult ?? FURY_DAMAGE_MULT));
     }
     const sector = presenceEntry ? services.sectorService.sectors.get(presenceEntry.sectorId) : null;
     if (!sector) return;
@@ -1839,7 +1846,7 @@ export class MessageHandlerService {
     const damageCap = continuousLaser ? maxDamage * 3 : maxDamage;
     let damage = Math.min(requestedDamage || 0, damageCap);
     if (attacker.furyExpiresAt && attacker.furyExpiresAt > now) {
-      damage = Math.round(damage * FURY_DAMAGE_MULT);
+      damage = Math.round(damage * (attacker.furyDamageMult ?? FURY_DAMAGE_MULT));
     }
     if (attacker.vengeanceTargetUserId === targetUserId && attacker.vengeanceExpiresAt && attacker.vengeanceExpiresAt > now) {
       damage = Math.round(damage * VENGEANCE_DAMAGE_MULT);

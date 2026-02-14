@@ -3,7 +3,6 @@ import {
   MOVE_SPEED,
   WORLD_WIDTH,
   WORLD_HEIGHT,
-  FURY_SIZE_MULT,
   SPAWN_IMMUNITY_UNTIL_FIRST_ACTION,
 } from "./PhaserArena/constants";
 import type { PhaserModule, WorldState } from "./PhaserArena/types";
@@ -56,6 +55,7 @@ import {
   type InterpolateRemotePlayersContext,
 } from "./PhaserArena/remotePlayers";
 import { parseSocketMessage } from "./PhaserArena/socketSchemas";
+import { getContinuousBeamParams, getAccelerationParams, getFuryParams, getGravityPitParams } from "@/lib/mutation";
 
 const createSpaceArenaScene = (
   Phaser: PhaserModule,
@@ -1713,31 +1713,34 @@ const createSpaceArenaScene = (
             durationMs: pending.durationMs,
           });
         } else if (pending.skillId === "fury_7s") {
+          const furyLevel = Math.max(1, useGameStore.getState().player?.mutations?.skillLevels?.fury_7s ?? 1);
+          const furyParams = getFuryParams(furyLevel);
           this.sendWorldAction("skill_fury", {
-            durationMs: pending.durationMs,
+            durationMs: furyParams.durationMs,
+            furyDamageMult: furyParams.damageMult,
           });
         } else if (pending.skillId === "teleport_3s") {
           this.sendWorldAction("skill_teleport", {
             durationMs: pending.durationMs,
           });
         } else if (pending.skillId === "gravity_pit") {
-          // Place pit at player position so it appears where they activated it
           const x = Math.round(this.player.x);
           const y = Math.round(this.player.y);
+          const gpLevel = Math.max(1, useGameStore.getState().player?.mutations?.skillLevels?.gravity_pit ?? 1);
+          const gpParams = getGravityPitParams(gpLevel);
           this.sendWorldAction("skill_gravity_pit", {
-            durationMs: pending.durationMs,
+            durationMs: gpParams.durationMs,
+            radius: gpParams.radius,
             x,
             y,
           });
-          // Optimistic pit: show zone at same position
-          const radius = 180;
           const myUserId = useGameStore.getState().user?.id ?? null;
           const optimisticPit = {
             id: `opt-gp-${Date.now()}`,
             x,
             y,
-            radius,
-            expiresAt: Date.now() + (pending.durationMs || 5000),
+            radius: gpParams.radius,
+            expiresAt: Date.now() + gpParams.durationMs,
             ownerUserId: myUserId != null ? String(myUserId) : undefined,
           };
           this.lastWorldGravityPits = [
@@ -2032,15 +2035,18 @@ const createSpaceArenaScene = (
           }
           return;
         }
-        this.player.setVelocity(0, 0);
-        this.player.setVisible(true);
-        this.player.play(
-          getShipBlindAnim(useGameStore.getState().user?.shipChoice),
-          true
-        );
-        const body = this.player.body as Phaser.Physics.Arcade.Body | null;
-        if (body) {
-          body.enable = false;
+        const player = this.player;
+        if (player && player.scene) {
+          player.setVelocity(0, 0);
+          player.setVisible(true);
+          player.play(
+            getShipBlindAnim(useGameStore.getState().user?.shipChoice),
+            true
+          );
+          const body = player.body as Phaser.Physics.Arcade.Body | null;
+          if (body) {
+            body.enable = false;
+          }
         }
         this.interpolateRemotePlayers();
         if (this.fpsText) {
@@ -2050,18 +2056,20 @@ const createSpaceArenaScene = (
       }
       if (this.deathNotified) {
         this.deathNotified = false;
-        if (!this.player) return;
-        this.player.setVisible(true);
-        this.player.play(
-          getShipIdleAnim(useGameStore.getState().user?.shipChoice),
-          true
-        );
-        this.player.setScale(
-          getShipScale(useGameStore.getState().user?.shipChoice)
-        );
-        const body = this.player.body as Phaser.Physics.Arcade.Body | null;
-        if (body) {
-          body.enable = true;
+        const player = this.player;
+        if (player && player.scene) {
+          player.setVisible(true);
+          player.play(
+            getShipIdleAnim(useGameStore.getState().user?.shipChoice),
+            true
+          );
+          player.setScale(
+            getShipScale(useGameStore.getState().user?.shipChoice)
+          );
+          const body = player.body as Phaser.Physics.Arcade.Body | null;
+          if (body) {
+            body.enable = true;
+          }
         }
       }
 
@@ -2080,7 +2088,12 @@ const createSpaceArenaScene = (
           "movement_speed_5s" &&
         (useGameStore.getState().activeSkillEffect?.expiresAt ?? 0) >
           Date.now();
-      const movementSpeedBoost = movementSpeedActive ? 1.5 : 1;
+      const accelerationLevel = movementSpeedActive
+        ? Math.max(1, useGameStore.getState().player?.mutations?.skillLevels?.movement_speed_5s ?? 1)
+        : 0;
+      const movementSpeedBoost = movementSpeedActive
+        ? getAccelerationParams(accelerationLevel).speedMultiplier
+        : 1;
       const myUserId = useGameStore.getState().user?.id ?? null;
       const inGravityPit = this.isInsideAnyGravityPitExcludingOwner(
         this.lastWorldGravityPits,
@@ -2145,9 +2158,13 @@ const createSpaceArenaScene = (
         useGameStore.getState().activeSkillEffect?.skillId === "fury_7s" &&
         (useGameStore.getState().activeSkillEffect?.expiresAt ?? 0) >
           Date.now();
+      const furyLevel = furyActive
+        ? Math.max(1, useGameStore.getState().player?.mutations?.skillLevels?.fury_7s ?? 1)
+        : 0;
+      const furySizeMult = furyActive ? getFuryParams(furyLevel).sizeMult : 1;
       const choice = useGameStore.getState().user?.shipChoice;
       const baseScale = getShipScale(choice) * this.appliedLevelScale;
-      const furyScale = baseScale * (furyActive ? FURY_SIZE_MULT : 1);
+      const furyScale = baseScale * furySizeMult;
       this.player.setScale(furyScale);
       if (body) {
         const radius =
@@ -2251,24 +2268,32 @@ const createSpaceArenaScene = (
         }
       }
       const isContinuousLaser =
-        (activeSkill?.skillId === "continuous_laser" ||
-          activeSkill?.skillId === "continuous_laser_super") &&
+        activeSkill?.skillId === "continuous_laser" &&
         now < (activeSkill?.expiresAt ?? 0);
-      const isSuperLaser = activeSkill?.skillId === "continuous_laser_super";
+      const beamLevel = isContinuousLaser
+        ? Math.max(1, useGameStore.getState().player?.mutations?.skillLevels?.continuous_laser ?? 1)
+        : 0;
+      const beamParams = beamLevel >= 1 ? getContinuousBeamParams(beamLevel) : null;
 
-      if (!isContinuousLaser) {
+      if (!isContinuousLaser || !beamParams) {
         this.continuousLaserBeams.forEach((g) => g.destroy());
         this.continuousLaserBeams = [];
         this.audioManager.stopContinuousLaserSound();
       } else {
+        const { beamCount, damageMultiplier } = beamParams;
+        const spreadAngles =
+          beamCount === 1
+            ? [0]
+            : beamCount === 2
+              ? [-0.2, 0.2]
+              : beamCount === 3
+                ? [-0.25, 0, 0.25]
+                : [-0.35, -0.175, 0, 0.175, 0.35].slice(0, beamCount);
         const choice = store.user?.shipChoice;
         const tint = choice === "keeper20" ? 0xffa500 : 0xff3b3b;
         const beamAngle = this.aimRotation - Math.PI / 2;
         const beamLength = 520;
         const beamWidth = 6;
-        const PRISM_SPREAD_ANGLES = [-0.35, -0.175, 0, 0.175, 0.35];
-        const beamCount = isSuperLaser ? 5 : 1;
-        // Recreate beams if we switched between single and super
         if (this.continuousLaserBeams.length !== beamCount) {
           this.continuousLaserBeams.forEach((g) => g.destroy());
           this.continuousLaserBeams = [];
@@ -2276,7 +2301,7 @@ const createSpaceArenaScene = (
         if (this.continuousLaserBeams.length === 0) {
           for (let i = 0; i < beamCount; i++) {
             const g = this.add.graphics();
-            g.fillStyle(tint, isSuperLaser ? 0.85 - i * 0.04 : 0.95);
+            g.fillStyle(tint, beamCount > 1 ? 0.85 - i * 0.04 : 0.95);
             g.fillRect(0, -beamWidth / 2, beamLength, beamWidth);
             g.setBlendMode(Phaser.BlendModes.ADD);
             g.setDepth((this.player?.depth ?? 0) + 1);
@@ -2293,24 +2318,14 @@ const createSpaceArenaScene = (
         flashOffset.rotate(this.aimRotation);
         const beamOriginX = this.player.x + flashOffset.x;
         const beamOriginY = this.player.y + flashOffset.y;
-        if (isSuperLaser) {
-          PRISM_SPREAD_ANGLES.forEach((spread, i) => {
-            const g = this.continuousLaserBeams[i];
-            if (!g) return;
-            g.setPosition(beamOriginX, beamOriginY);
-            g.setRotation(beamAngle + spread);
-            g.setDepth((this.player?.depth ?? 0) + 1);
-            g.setVisible(true);
-          });
-        } else {
-          const g = this.continuousLaserBeams[0];
-          if (g) {
-            g.setPosition(beamOriginX, beamOriginY);
-            g.setRotation(beamAngle);
-            g.setDepth((this.player?.depth ?? 0) + 1);
-            g.setVisible(true);
-          }
-        }
+        spreadAngles.forEach((spread, i) => {
+          const g = this.continuousLaserBeams[i];
+          if (!g) return;
+          g.setPosition(beamOriginX, beamOriginY);
+          g.setRotation(beamAngle + spread);
+          g.setDepth((this.player?.depth ?? 0) + 1);
+          g.setVisible(true);
+        });
 
         const CONTINUOUS_LASER_HIT_INTERVAL_MS = 200;
         const beamHalfWidth = 18;
@@ -2320,10 +2335,10 @@ const createSpaceArenaScene = (
         ) {
           this.lastContinuousLaserHitAt = now;
           const baseDamage = useGameStore.getState().player?.damage ?? 18;
-          const damage = Math.floor(baseDamage * 3);
-          if (isSuperLaser) {
+          const damage = Math.floor(baseDamage * damageMultiplier);
+          if (beamCount > 1) {
             const pointInAnyBeam = (px: number, py: number) => {
-              for (const spread of PRISM_SPREAD_ANGLES) {
+              for (const spread of spreadAngles) {
                 const angle = beamAngle + spread;
                 const cos = Math.cos(-angle);
                 const sin = Math.sin(-angle);

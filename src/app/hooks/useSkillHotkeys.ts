@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { getSkillDef } from "@/lib/skills";
-import { DEFAULT_PLAYER } from "@/lib/gameDefaults";
+import { getEffectiveEnergyCost } from "@/lib/mutation";
 import { useGameStore } from "@/store/gameStore";
 
 export function useSkillHotkeys(
@@ -18,18 +18,16 @@ export function useSkillHotkeys(
         if (tag === "input" || tag === "textarea") return;
         const index = key.charCodeAt(0) - "1".charCodeAt(0);
         const state = useGameStore.getState();
-        const baseSkills = (state.player?.skills ?? []).filter(Boolean);
-        const merged: string[] = [...baseSkills];
-        for (const id of DEFAULT_PLAYER.skills) {
-          if (!merged.includes(id) && merged.length < 9) merged.push(id);
-        }
-        const skillId = merged[index];
+        const baseSkills = (state.player?.skills ?? []).slice(0, 9);
+        const skillId = baseSkills[index];
         const def = skillId ? getSkillDef(skillId) : null;
+        const level = state.player?.mutations?.skillLevels?.[skillId ?? ""] ?? 0;
+        const energyCost = def ? getEffectiveEnergyCost(def.energyCost, level) : 0;
         const energy = state.player?.resources?.scrap ?? 0;
         const cooldownEndsAt = Number(
           (skillId && state.skillCooldowns?.[skillId]) ?? 0
         );
-        if (def && energy < (def.energyCost ?? 0)) return;
+        if (def && energy < energyCost) return;
         if (def && cooldownEndsAt > Date.now()) return;
         void state.triggerSkillSlot(index);
       }

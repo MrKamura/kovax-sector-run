@@ -2,6 +2,23 @@ import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import { DEFAULT_PLAYER } from "@/lib/gameDefaults";
 import { getSkillDef } from "@/lib/skills";
+import {
+  getEffectiveEnergyCost,
+  getContinuousBeamParams,
+  getShieldParams,
+  getAccelerationParams,
+  getHealingParams,
+  getFuryParams,
+  getTeleportParams,
+  getGravityPitParams,
+  CONTINUOUS_BEAM_SKILL_ID,
+  SHIELD_SKILL_ID,
+  ACCELERATION_SKILL_ID,
+  HEALING_SKILL_ID,
+  FURY_SKILL_ID,
+  TELEPORT_SKILL_ID,
+  GRAVITY_PIT_SKILL_ID,
+} from "@/lib/mutation";
 
 export type PlayerState = {
   id: number;
@@ -32,6 +49,12 @@ export type PlayerState = {
   blueprints: string[];
   cosmetics: string[];
   lastCollectedAt: string | null;
+  /** Mutation state (purchased skills, levels, upgrade in progress). */
+  mutations?: {
+    purchasedSkills: string[];
+    skillLevels: Record<string, number>;
+    upgradeInProgress: { skillId: string; endsAt: number } | null;
+  };
   monsterProgress?: Record<
     string,
     {
@@ -148,6 +171,9 @@ type GameStore = {
   authError: string | null;
   loadSession: () => Promise<void>;
   loadPlayer: () => Promise<void>;
+  loadMutation: () => Promise<void>;
+  purchaseMutationSkill: (skillId: string) => Promise<void>;
+  startMutationUpgrade: (skillId: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -349,25 +375,29 @@ export const useGameStore = create<GameStore>()(
   loadPlayer: async () => {
     set({ isLoading: true, error: null });
     try {
-      const data = await request<{ player: PlayerState; user: UserState }>(
+      const data = await request<{ player: PlayerState & { mutations?: PlayerState["mutations"] }; user: UserState }>(
         "/api/player"
       );
       const baseSkills = data.player.skills ?? [];
-      const merged: string[] = [...baseSkills];
-      for (const id of DEFAULT_PLAYER.skills) {
-        if (!merged.includes(id) && merged.length < 9) merged.push(id);
-      }
-      const playerWithDefaults = {
+      const purchased = new Set(data.player.mutations?.purchasedSkills ?? []);
+      const merged: string[] = baseSkills.filter((id) => id && purchased.has(id));
+      while (merged.length < 9) merged.push("");
+      const playerWithMutation = {
         ...data.player,
         skills: merged.slice(0, 9),
+        mutations: data.player.mutations ?? {
+          purchasedSkills: [],
+          skillLevels: {},
+          upgradeInProgress: null,
+        },
       };
       set((state) => {
         const wasDead = (state.player?.health ?? 1) <= 0;
-        const isDead = (playerWithDefaults.health ?? 1) <= 0;
-        state.player = playerWithDefaults;
+        const isDead = (playerWithMutation.health ?? 1) <= 0;
+        state.player = playerWithMutation;
         state.user = data.user;
         state.isLoading = false;
-        state.deathInfo = (playerWithDefaults.health ?? 1) <= 0 ? state.deathInfo : null;
+        state.deathInfo = (playerWithMutation.health ?? 1) <= 0 ? state.deathInfo : null;
         state.pendingRespawn = isDead ? (wasDead ? state.pendingRespawn : false) : false;
         if (data.user?.musicVolume != null) state.musicVolume = data.user.musicVolume;
         if (data.user?.sfxVolume != null) state.sfxVolume = data.user.sfxVolume;
@@ -559,6 +589,66 @@ export const useGameStore = create<GameStore>()(
       }
     });
   },
+  loadMutation: async () => {
+    set({ error: null });
+    try {
+      const data = await request<{
+        mutations: { purchasedSkills: string[]; skillLevels: Record<string, number>; upgradeInProgress: { skillId: string; endsAt: number } | null };
+        tokens: number;
+        player: PlayerState;
+      }>("/api/mutation");
+      set((state) => {
+        if (state.player) {
+          state.player.mutations = data.mutations;
+          state.player.resources = { ...state.player.resources, tokens: data.tokens };
+        }
+      });
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : "Не удалось загрузить мутации.",
+      });
+    }
+  },
+  purchaseMutationSkill: async (skillId) => {
+    set({ error: null });
+    try {
+      const data = await request<{ player: PlayerState; mutations: PlayerState["mutations"] }>("/api/mutation", {
+        method: "POST",
+        body: JSON.stringify({ action: "purchase", skillId }),
+      });
+      set((state) => {
+        if (state.player && data.player) {
+          state.player = { ...state.player, ...data.player };
+          state.player.mutations = data.mutations ?? state.player.mutations;
+        }
+      });
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : "Покупка не удалась.",
+      });
+      throw error;
+    }
+  },
+  startMutationUpgrade: async (skillId) => {
+    set({ error: null });
+    try {
+      const data = await request<{ player: PlayerState; mutations: PlayerState["mutations"] }>("/api/mutation", {
+        method: "POST",
+        body: JSON.stringify({ action: "upgrade", skillId }),
+      });
+      set((state) => {
+        if (state.player && data.player) {
+          state.player = { ...state.player, ...data.player };
+          state.player.mutations = data.mutations ?? state.player.mutations;
+        }
+      });
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : "Улучшение не запущено.",
+      });
+      throw error;
+    }
+  },
   addSkill: async (skill) => {
     set({ error: null });
     try {
@@ -590,13 +680,8 @@ export const useGameStore = create<GameStore>()(
   triggerSkillSlot: async (slotIndex) => {
     const { getState } = useGameStore;
     const state = getState();
-    // Build merged list the same way as the page (filter(Boolean) first) so slot indices match
-    const baseSkills = (state.player?.skills ?? []).filter(Boolean);
-    const merged: string[] = [...baseSkills];
-    for (const id of DEFAULT_PLAYER.skills) {
-      if (!merged.includes(id) && merged.length < 9) merged.push(id);
-    }
-    const skillId = merged[slotIndex];
+    const baseSkills = (state.player?.skills ?? []).slice(0, 9);
+    const skillId = baseSkills[slotIndex];
     if (!skillId) {
       return false;
     }
@@ -604,6 +689,8 @@ export const useGameStore = create<GameStore>()(
     if (!def) {
       return false;
     }
+    const level = state.player?.mutations?.skillLevels?.[skillId] ?? 0;
+    const energyCost = getEffectiveEnergyCost(def.energyCost, level);
     if (state.playerInSafeZone) {
       set({ error: "В безопасной зоне навыки использовать нельзя." });
       return false;
@@ -615,7 +702,7 @@ export const useGameStore = create<GameStore>()(
       return false;
     }
     const energy = state.player?.resources?.scrap ?? 0;
-    if (energy < def.energyCost) {
+    if (energy < energyCost) {
       set({ error: "Недостаточно энергии." });
       return false;
     }
@@ -623,19 +710,35 @@ export const useGameStore = create<GameStore>()(
     try {
       const data = await request<{ player: PlayerState }>("/api/consume-energy", {
         method: "POST",
-        body: JSON.stringify({ amount: def.energyCost }),
+        body: JSON.stringify({ amount: energyCost }),
       });
       set({ player: data.player });
-      if (def.durationMs) {
+      const durationMs =
+        skillId === CONTINUOUS_BEAM_SKILL_ID && level >= 1
+          ? getContinuousBeamParams(level).durationMs
+          : skillId === SHIELD_SKILL_ID && level >= 1
+            ? getShieldParams(level).durationMs
+            : skillId === ACCELERATION_SKILL_ID && level >= 1
+              ? getAccelerationParams(level).durationMs
+              : skillId === HEALING_SKILL_ID && level >= 1
+                ? getHealingParams(level).durationMs
+                : skillId === FURY_SKILL_ID && level >= 1
+                  ? getFuryParams(level).durationMs
+                  : skillId === TELEPORT_SKILL_ID && level >= 1
+                    ? getTeleportParams(level).castTimeMs
+                    : skillId === GRAVITY_PIT_SKILL_ID && level >= 1
+                      ? getGravityPitParams(level).durationMs
+                      : def.durationMs ?? 0;
+      if (durationMs > 0) {
         set({
           activeSkillEffect: {
             skillId: def.id,
-            expiresAt: Date.now() + def.durationMs,
+            expiresAt: Date.now() + durationMs,
           },
         });
       }
-      if ((def.serverEffect === "immunity" || def.serverEffect === "healing" || def.serverEffect === "fury" || def.serverEffect === "teleport" || def.serverEffect === "gravity_pit") && def.durationMs) {
-        set({ pendingServerSkillEffect: { skillId: def.id, durationMs: def.durationMs } });
+      if ((def.serverEffect === "immunity" || def.serverEffect === "healing" || def.serverEffect === "fury" || def.serverEffect === "teleport" || def.serverEffect === "gravity_pit") && durationMs > 0) {
+        set({ pendingServerSkillEffect: { skillId: def.id, durationMs } });
       }
       const cooldownMs = def.cooldownMs ?? 0;
       if (cooldownMs > 0) {

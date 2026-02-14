@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import styles from "./page.module.css";
 import { useGameStore } from "@/store/gameStore";
 import SpaceArena from "@/components/SpaceArena";
-import { DEFAULT_PLAYER } from "@/lib/gameDefaults";
 import { SKILL_SLOT_COUNT } from "@/lib/skills";
 import { AuthScreen } from "@/components/home/AuthScreen";
 import { NicknameScreen } from "./components/NicknameScreen";
@@ -20,6 +19,7 @@ import { PlayerPanel } from "./components/PlayerPanel";
 import { QuestPanel } from "./components/QuestPanel";
 import { QuestButton } from "./components/QuestButton";
 import { TournamentButton } from "./components/TournamentButton";
+import { MutationButton } from "./components/MutationButton";
 import { QuestCompleteOverlay } from "./components/QuestCompleteOverlay";
 import {
   useChat,
@@ -137,17 +137,9 @@ export default function Home() {
   const expToNext = player?.expToNext ?? 100;
   const expRatio = Math.max(0, Math.min(1, exp / expToNext));
   const playerLevel = player?.level ?? 1;
-  const serverSkills = player?.skills ?? [];
-  const mergedSkills = (() => {
-    const list = serverSkills.filter(Boolean);
-    for (const id of DEFAULT_PLAYER.skills) {
-      if (!list.includes(id) && list.length < SKILL_SLOT_COUNT) list.push(id);
-    }
-    return list.slice(0, SKILL_SLOT_COUNT);
-  })();
   const skillSlots = Array.from(
     { length: SKILL_SLOT_COUNT },
-    (_, i) => mergedSkills[i] ?? ""
+    (_, i) => (player?.skills ?? [])[i] ?? ""
   );
   const isDead = (player?.health ?? 1) <= 0;
 
@@ -227,6 +219,7 @@ export default function Home() {
                 </button>
                 <TournamentButton />
                 <QuestButton />
+                <MutationButton />
                 <div className={styles.huntBuffs}>
                   {vengeance && vengeance.expiresAt > Date.now() && (
                     <div className={styles.vengeanceBuff} aria-label="Hunting">
@@ -396,6 +389,7 @@ export default function Home() {
               expRatio={expRatio}
               resources={resources}
               skillSlots={skillSlots}
+              skillLevels={player?.mutations?.skillLevels}
               skillCooldowns={skillCooldowns ?? {}}
               playerInSafeZone={playerInSafeZone}
               isDead={isDead}

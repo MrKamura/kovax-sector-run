@@ -6,7 +6,7 @@
     "dev": "tsx server/bootstrap.ts",
     "build": "next build",
     "build:server": "tsc -p server/tsconfig.json",
-    "build:all": "next build && npm run build:server",
+    "build:all": "next build && yarn run build:server",
     "start": "node server/dist/bootstrap.js",
     "migrate": "node server/run-migrations.js",
     "reset-quests": "node server/reset-user-quests.js",

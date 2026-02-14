@@ -22,6 +22,7 @@ export interface PresenceEntry {
   huntedByUserId?: number;
   huntedExpiresAt?: number;
   furyExpiresAt?: number;
+  furyDamageMult?: number;
   lastFuryRegenAt?: number;
   lastSafeZoneRegenAt?: number;
   healingExpiresAt?: number;

@@ -368,7 +368,7 @@ export const outgoingMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("player_hit"), targetUserId: z.number(), damage: z.number(), continuousLaser: z.boolean().optional() }),
   z.object({ type: z.literal("skill_immunity"), durationMs: z.number() }),
   z.object({ type: z.literal("skill_healing"), durationMs: z.number() }),
-  z.object({ type: z.literal("skill_fury"), durationMs: z.number() }),
+  z.object({ type: z.literal("skill_fury"), durationMs: z.number(), furyDamageMult: z.number().optional() }),
   z.object({ type: z.literal("skill_teleport"), durationMs: z.number() }),
   z.object({ type: z.literal("skill_gravity_pit"), x: z.number(), y: z.number(), radius: z.number(), durationMs: z.number().optional() }),
   z.object({ type: z.literal("use_black_hole"), blackHoleId: z.string() }),

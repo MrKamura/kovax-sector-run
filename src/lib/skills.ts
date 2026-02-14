@@ -19,25 +19,16 @@ export const SKILL_DEFINITIONS: Record<string, SkillDef> = {
   continuous_laser: {
     id: "continuous_laser",
     name: "Непрерывный луч",
-    description: "Один луч на 5 сек. Урон в 3 раза выше обычного выстрела. Стоимость: 7 энергии.",
+    description: "Уровни улучшают длительность, урон и число лучей. Стоимость энергии зависит от уровня.",
     icon: "/assets/skills/icons/continuous_laser.png",
     energyCost: 7,
-    durationMs: 5000,
+    durationMs: 3000,
     cooldownMs: 8000,
-  },
-  continuous_laser_super: {
-    id: "continuous_laser_super",
-    name: "Супер непрерывный луч",
-    description: "Призматический веер лучей на 5 сек. Бьёт всех в зоне (враги и игроки), урон в 3 раза выше выстрела. Стоимость: 21 энергии.",
-    icon: "/assets/skills/icons/continuous_laser.png",
-    energyCost: 21,
-    durationMs: 5000,
-    cooldownMs: 15000,
   },
   immunity_5s: {
     id: "immunity_5s",
     name: "Щит",
-    description: "Полная неуязвимость на 5 сек. Стоимость: 10 энергии.",
+    description: "Полная неуязвимость. Длительность и стоимость зависят от уровня мутации.",
     icon: "/assets/skills/icons/immunity_5s.png",
     energyCost: 10,
     durationMs: 5000,
@@ -47,7 +38,7 @@ export const SKILL_DEFINITIONS: Record<string, SkillDef> = {
   movement_speed_5s: {
     id: "movement_speed_5s",
     name: "Ускорение",
-    description: "Увеличивает скорость передвижения на 5 сек. Стоимость: 3 энергии.",
+    description: "Увеличивает скорость передвижения. Длительность и множитель зависят от уровня мутации.",
     icon: "/assets/skills/icons/movement_speed_5s.png",
     energyCost: 3,
     durationMs: 5000,
@@ -56,7 +47,7 @@ export const SKILL_DEFINITIONS: Record<string, SkillDef> = {
   healing_5s: {
     id: "healing_5s",
     name: "Лечение",
-    description: "Сильно ускоряет восстановление здоровья на 5 сек. Стоимость: 8 энергии.",
+    description: "Сильно ускоряет восстановление здоровья. Длительность зависит от уровня мутации.",
     icon: "/assets/skills/icons/healing_5s.svg",
     energyCost: 8,
     durationMs: 5000,
@@ -66,7 +57,7 @@ export const SKILL_DEFINITIONS: Record<string, SkillDef> = {
   fury_7s: {
     id: "fury_7s",
     name: "Ярость",
-    description: "Увеличивает размер киппера и урон на 7 сек. Стоимость: 12 энергии.",
+    description: "Увеличивает размер и урон. Длительность, размер и множитель урона зависят от уровня мутации.",
     icon: "/assets/skills/icons/fury_7s.svg",
     energyCost: 12,
     durationMs: 7000,
@@ -76,7 +67,7 @@ export const SKILL_DEFINITIONS: Record<string, SkillDef> = {
   teleport_3s: {
     id: "teleport_3s",
     name: "Телепорт",
-    description: "Через 3 сек переносит в случайную точку сектора. Стоимость: 15 энергии. Долгая перезарядка.",
+    description: "Переносит в случайную точку сектора. Время произнесения зависит от уровня мутации.",
     icon: "/assets/skills/icons/teleport_3s.svg",
     energyCost: 15,
     durationMs: 3000,
@@ -86,7 +77,7 @@ export const SKILL_DEFINITIONS: Record<string, SkillDef> = {
   gravity_pit: {
     id: "gravity_pit",
     name: "Гравитационная яма",
-    description: "Создаёт зону на 5 сек, замедляющую врагов и игроков внутри. Радиус ~180 px. Стоимость: 10 энергии.",
+    description: "Создаёт зону, замедляющую врагов и игроков. Длительность и радиус зависят от уровня мутации.",
     icon: "/assets/skills/icons/gravity_pit.svg",
     energyCost: 10,
     durationMs: 5000,

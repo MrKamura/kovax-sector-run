@@ -1,58 +1,61 @@
-# Dockerfile
-FROM node:20-alpine AS builder
+# Одностадийная сборка — избегаем COPY node_modules между стадиями (экономия диска)
+FROM node:20-alpine
 
 WORKDIR /app
 
-# 1. Копируем файлы зависимостей
+# 1. Включаем Yarn через Corepack
+RUN corepack enable && corepack prepare yarn@1 --activate
+
+# 2. Копируем файлы зависимостей
 COPY package*.json ./
-COPY package-lock.json* ./
+COPY yarn.lock* ./
 
-# 2. Устанавливаем ВСЕ зависимости (dependencies + devDependencies)
-RUN npm ci
+# 3. Устанавливаем зависимости
+RUN yarn install --frozen-lockfile
 
-# 3. Копируем весь исходный код
+# 4. Копируем исходный код
 COPY . .
 
-# 4. Сборка Next.js и Nest-сервера (server/dist)
-RUN npm run build:all
+# 5. Сборка Next.js и Nest-сервера
+RUN yarn run build:all
 
-# Production образ
-FROM node:20-alpine AS runner
+# 6. Удаляем исходники и лишние файлы (освобождаем место на диске)
+RUN rm -rf src server/nest server/bootstrap.ts server/tsconfig.json server/reset-user-quests.js \
+    tsconfig.tsbuildinfo .env.example .next/cache
 
-WORKDIR /app
+# 7. Удаляем devDependencies (только production)
+RUN yarn install --frozen-lockfile --production
 
-# Создаем непривилегированного пользователя
+# 8. Удаляем платформенные бинарники для других ОС (Alpine = linux-musl, оставляем только нужное)
+RUN rm -rf node_modules/@next/swc-darwin-* node_modules/@next/swc-win32-* \
+    node_modules/@next/swc-linux-arm* node_modules/@next/swc-linux-ia32* \
+    node_modules/@next/swc-linux-ppc64* node_modules/@next/swc-linux-riscv64* \
+    node_modules/@next/swc-linux-s390x* node_modules/@next/swc-linux-x64-gnu \
+    node_modules/@img/sharp-darwin-* node_modules/@img/sharp-win32-* \
+    node_modules/@img/sharp-linux-arm* node_modules/@img/sharp-linux-ppc64* \
+    node_modules/@img/sharp-linux-riscv64* node_modules/@img/sharp-linux-s390x* \
+    node_modules/@img/sharp-linuxmusl-arm64 node_modules/@img/sharp-linux-x64 \
+    node_modules/@img/sharp-libvips-darwin-* node_modules/@img/sharp-libvips-win32-* \
+    node_modules/@img/sharp-libvips-linux-arm* node_modules/@img/sharp-libvips-linux-ppc64* \
+    node_modules/@img/sharp-libvips-linux-riscv64* node_modules/@img/sharp-libvips-linux-s390x* \
+    node_modules/@img/sharp-libvips-linuxmusl-arm64 node_modules/@img/sharp-libvips-linux-x64* \
+    2>/dev/null || true
+
+# 9. Создаем непривилегированного пользователя
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nextjs -u 1001 -G nodejs
 
-# 1. Копируем ТОЛЬКО файлы зависимостей из стадии builder
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/package-lock.json* ./
-
-# 2. Устанавливаем ТОЛЬКО production зависимости (без devDependencies)
-RUN npm ci --omit=dev
-
-# 3. Копируем собранное приложение и исходный код сервера
-COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/server ./server
-COPY --from=builder --chown=nextjs:nodejs /app/next.config.ts ./next.config.ts
-COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
-
-# 4. Entrypoint (runs server/run-migrations.js then CMD)
-COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
+# 10. Entrypoint (уже скопирован в COPY . .)
 RUN chmod +x docker-entrypoint.sh
 
-# 5. Устанавливаем владельца для всей папки /app на nextjs
+# 11. Владелец файлов
 RUN chown -R nextjs:nodejs /app
 
-# Переключаемся на пользователя nextjs
 USER nextjs
 
-EXPOSE ${PORT:-4000}
+EXPOSE 4000
 ENV NODE_ENV=production
-ENV PORT=${PORT:-4000}
+ENV PORT=4000
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
-# Nest server: WebSocket + game logic via server/dist/bootstrap.js
 CMD ["node", "server/dist/bootstrap.js"]

@@ -1,6 +1,7 @@
 "use client";
 
 import { getSkillDef } from "@/lib/skills";
+import { getEffectiveEnergyCost } from "@/lib/mutation";
 import styles from "../page.module.css";
 
 type PlayerPanelProps = {
@@ -11,6 +12,7 @@ type PlayerPanelProps = {
   expRatio: number;
   resources: { scrap: number; tokens: number };
   skillSlots: string[];
+  skillLevels?: Record<string, number>;
   skillCooldowns: Record<string, number>;
   playerInSafeZone: boolean;
   isDead: boolean;
@@ -29,6 +31,7 @@ export function PlayerPanel({
   expRatio,
   resources,
   skillSlots,
+  skillLevels = {},
   skillCooldowns,
   playerInSafeZone,
   isDead,
@@ -55,9 +58,10 @@ export function PlayerPanel({
       <div className={styles.skillBarSingleRow}>
         {skillSlots.map((skillId, index) => {
           const def = skillId ? getSkillDef(skillId) : null;
+          const level = skillLevels[skillId ?? ""] ?? 0;
+          const energyCost = def ? getEffectiveEnergyCost(def.energyCost, level) : 0;
           const keyNum = index + 1;
-          const canAfford =
-            def && resources.scrap >= (def.energyCost ?? 0);
+          const canAfford = def && resources.scrap >= energyCost;
           const cooldownEndsAt = Number(
             (skillId && skillCooldowns?.[skillId]) ?? 0
           );
@@ -147,7 +151,7 @@ export function PlayerPanel({
                     </span>
                   ) : (
                     <span className={styles.skillSlotCost}>
-                      {def.energyCost} Э
+                      {energyCost} Э
                     </span>
                   )}
                 </>

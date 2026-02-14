@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Runs all SQL migrations from server/migrations in order.
- * Usage: npm run migrate  or  node server/run-migrations.js
+ * Usage: yarn run migrate  or  node server/run-migrations.js
  * Loads .env.local and .env from project root (DATABASE_URL).
  */
 const fs = require("fs");
