@@ -1,12 +1,9 @@
 #!/bin/sh
 set -e
-# Run DB migrations only once (flag in persisted volume)
+# Run DB migrations before starting the app
 if [ -x "$(command -v node)" ] && [ -f /app/server/run-migrations.js ]; then
-  if [ ! -f /app/uploads/.migrations_done ]; then
-    echo "Running migrations..."
-    node /app/server/run-migrations.js || exit 1
-    touch /app/uploads/.migrations_done
-    echo "Migrations finished."
-  fi
+  echo "Running migrations..."
+  node /app/server/run-migrations.js || exit 1
+  echo "Migrations finished."
 fi
 exec "$@"
