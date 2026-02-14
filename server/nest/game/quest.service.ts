@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Op } from "sequelize";
-import type { DbService } from "./db.service";
-import type { PlayerService } from "./player.service";
+import { DbService } from "./db.service";
+import { PlayerService } from "./player.service";
 
 export type QuestType = "mob_kills" | "pvp_kills";
 
