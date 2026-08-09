@@ -9,7 +9,11 @@ interface Position {
   y: number;
 }
 
-export function QuestPanel() {
+interface QuestPanelProps {
+  containerRef?: React.RefObject<HTMLDivElement | null>;
+}
+
+export function QuestPanel({ containerRef }: QuestPanelProps) {
   const activeQuests = useGameStore((s) => s.activeQuests);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const previousCompletedRef = useRef<Map<number, number>>(new Map());
@@ -89,17 +93,22 @@ export function QuestPanel() {
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - dragStartRef.current.x;
       const deltaY = e.clientY - dragStartRef.current.y;
-      
+      const rect = containerRef?.current?.getBoundingClientRect();
+      const minX = rect ? rect.left : 0;
+      const minY = rect ? rect.top : 0;
+      const maxX = rect ? rect.right : window.innerWidth;
+      const maxY = rect ? rect.bottom : window.innerHeight;
+
       setPosition((prev) => {
         const panelWidth = panelRef.current?.offsetWidth || 200;
         const panelHeight = panelRef.current?.offsetHeight || 100;
-        
+
         return {
-          x: Math.max(0, Math.min(window.innerWidth - panelWidth, prev.x + deltaX)),
-          y: Math.max(0, Math.min(window.innerHeight - panelHeight, prev.y + deltaY)),
+          x: Math.max(minX, Math.min(maxX - panelWidth, prev.x + deltaX)),
+          y: Math.max(minY, Math.min(maxY - panelHeight, prev.y + deltaY)),
         };
       });
-      
+
       dragStartRef.current = { x: e.clientX, y: e.clientY };
     };
 

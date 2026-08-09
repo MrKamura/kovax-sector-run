@@ -21,6 +21,7 @@ import { QuestButton } from "./components/QuestButton";
 import { TournamentButton } from "./components/TournamentButton";
 import { MutationButton } from "./components/MutationButton";
 import { QuestCompleteOverlay } from "./components/QuestCompleteOverlay";
+import { ControlHintsOverlay, PanelHintOverlay } from "./components/TutorialOverlay";
 import {
   useChat,
   useIntroStory,
@@ -28,6 +29,7 @@ import {
   useKeeperFormDisplay,
   useCooldownTick,
   useSkillHotkeys,
+  useTutorial,
 } from "./hooks";
 
 export default function Home() {
@@ -71,6 +73,7 @@ export default function Home() {
   const [showIntroAfterAuth, setShowIntroAfterAuth] = useState(false);
   const [draggedSkillSlot, setDraggedSkillSlot] = useState<number | null>(null);
   const justSubmittedAuth = useRef(false);
+  const gameContainerRef = useRef<HTMLDivElement>(null);
 
   const needsNickname = !!user && !user.nickname;
   const needsShip = !!user && !!user.nickname && !user.shipChoice;
@@ -98,8 +101,10 @@ export default function Home() {
     introStory.showKeeperSelectionAfterIntro;
 
   const keeperForm = useKeeperFormDisplay(player, user);
+  const isInGame = !!user && !needsNickname && !needsShip;
+  const tutorial = useTutorial(isInGame);
   useCooldownTick(skillCooldowns, vengeance?.expiresAt);
-  useSkillHotkeys(!!user && !needsNickname && !needsShip && !menuOpen);
+  useSkillHotkeys(isInGame && !menuOpen && !tutorial.tutorialActive);
 
   useEffect(() => void loadSession(), [loadSession]);
   useEffect(() => {
@@ -201,13 +206,14 @@ export default function Home() {
 
         {user && !needsNickname && !needsShip && (
           <div
+            ref={gameContainerRef}
             className={`${styles.sceneWrapper} ${
               isDead ? styles.deadScene : ""
             } ${lowHealthActive ? styles.lowHealthScene : ""}`}
           >
-            <SpaceArena paused={menuOpen} />
+            <SpaceArena paused={menuOpen || tutorial.tutorialActive} />
 
-            <QuestPanel />
+            <QuestPanel containerRef={gameContainerRef} />
             <div className={styles.hud}>
               <div className={styles.topRightControls}>
                 <button
@@ -325,6 +331,22 @@ export default function Home() {
 
             {exitCountdown !== null && (
               <ExitOverlay countdown={exitCountdown} />
+            )}
+
+            {tutorial.showControlHints && (
+              <ControlHintsOverlay onDismiss={tutorial.dismissControlHints} />
+            )}
+            {tutorial.showPanelHint && (
+              <PanelHintOverlay
+                title={tutorial.showPanelHint.title}
+                description={tutorial.showPanelHint.description}
+                onDismiss={tutorial.dismissPanelHint}
+              />
+            )}
+            {tutorial.tutorialBuffRemainingSec > 0 && (
+              <div className={styles.tutorialBuffIndicator}>
+                Щит новичка: {tutorial.tutorialBuffRemainingSec} с
+              </div>
             )}
 
             {menuOpen && (

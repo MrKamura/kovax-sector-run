@@ -176,6 +176,20 @@ export class MessageHandlerService {
       socket.close(1000);
       return;
     }
+    if (message.type === "tutorial_complete") {
+      this.handleTutorialComplete(user, message, services);
+      return;
+    }
+  }
+
+  private handleTutorialComplete(user: ResolvedUser, message: Record<string, unknown>, services: HandlerServices): void {
+    const entry = services.presence.getEntry(user.id);
+    if (!entry) return;
+    const durationMs = Math.min(15000, Math.max(5000, Number(message.durationMs) || 10000));
+    entry.invulnerableUntil = Date.now() + durationMs;
+    services.presence.setEntry(user.id, entry);
+    if (entry.sectorId) services.broadcast.broadcastPresence(entry.sectorId, services.presence);
+    services.broadcast.sendSelfUpdate(user.id, { serverTime: Date.now(), invulnerableUntil: entry.invulnerableUntil }, services.presence);
   }
 
   private async handleUpdate(

@@ -1,0 +1,20 @@
+---
+description: Read project docs before exploring the Kovax codebase
+alwaysApply: true
+---
+
+# Kovax docs first
+
+For this repo, prefer **docs over full codebase search**.
+
+1. Read `AGENTS.md` (root).
+2. Then only the relevant file under `docs/`:
+   - `docs/architecture.md` — boot, layers, deploy
+   - `docs/server.md` — Nest, WebSocket, sectors, quests
+   - `docs/frontend.md` — Next, Zustand, Phaser
+   - `docs/database.md` — models, migrations
+   - `docs/conventions.md` — gotchas
+
+Open source files only after you know which path to change. Use Yarn, not npm.
+
+When you change code: update matching `docs/` files and add bullets under `CHANGELOG.md` → `[Unreleased]`. On a versioned release: bump `package.json` and move notes into a dated `CHANGELOG` section (see `docs/conventions.md`).

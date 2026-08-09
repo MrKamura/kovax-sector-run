@@ -1,37 +1,21 @@
-# Havenfall: Echoes of the Wastes
+# Kovax: Sector Run
 
-Инкрементальная RPG про выживание в постапокалипсисе. Стек: Next.js, Sequelize + Postgres, Zustand и Phaser.
+Browser online RPG (keepers, sectors, PvP/PvE). Stack: **Next.js**, **Nest (game context)**, **Phaser**, **Sequelize + PostgreSQL**, **Zustand**. Package manager: **Yarn**.
 
-## Быстрый старт
+**Version:** `0.5.0` — see [CHANGELOG.md](./CHANGELOG.md).
 
-1. Скопируйте `.env.example` в `.env.local` и укажите `DATABASE_URL`.
-2. Запустите Postgres.
-3. Запустите сервер разработки:
+## Documentation (humans & AI)
 
-```bash
-npm run dev
-```
+- **[AGENTS.md](./AGENTS.md)** — agent entry point  
+- **[docs/](./docs/)** — architecture, server, frontend, DB, conventions  
+- **[CHANGELOG.md](./CHANGELOG.md)** — version history  
+- **[.github/DEPLOY.md](./.github/DEPLOY.md)** — production deploy  
 
-Откройте [http://localhost:3000](http://localhost:3000).
+## Quick start
 
-## Что уже готово
+1. Copy `.env.example` → `.env.local`, set `DATABASE_URL`.
+2. Start Postgres.
+3. `yarn install && yarn run migrate && yarn run dev`
+4. Open [http://localhost:3000](http://localhost:3000) (Docker usually port 4000).
 
-- Сбор ресурсов: лом и детали.
-- Подключён Phaser для 2D-сцены (пока прототип).
-
-## Ассеты
-
-- Kenney Isometric City (CC0)
-  https://opengameart.org/content/isometric-city
-- Dark Ruins Tilesets - Isometric (CC0)
-  https://opengameart.org/content/dark-ruins-tilesets-isometric
-- Kenney Isometric Miniature Prototype (CC0)
-  https://kenney.nl/assets/isometric-miniature-prototype
-- Kenney Weapon Pack (CC0)
-  https://kenney.nl/assets/weapon-pack
-- Kenney Space Shooter Redux (CC0)
-  https://kenney.nl/assets/space-shooter-redux
-- Kenney Pixel Platformer: Industrial Expansion (CC0)
-  https://opengameart.org/content/pixel-platformer-industrial-expansion
-
-
+Gameplay and WebSocket `/ws` go through `server/bootstrap.ts` — do not run bare Next for the game.
