@@ -3,9 +3,8 @@
 ## Connection
 
 - `DATABASE_URL` (or `DB_*`) in `.env.local` / `.env`
-- Sequelize: `src/lib/db.ts`
-- Model init: `src/lib/modelInit.ts` → `server/game/models/*`
-- Prefer `DB_SYNC=false` in prod; schema via migrations
+- Sequelize: `server/game/game/db.service.ts` — single instance, shared by the game and the REST API (`server/rest/`)
+- Models: `server/game/models/*`; schema is managed by migrations only (no `sequelize.sync()`)
 
 ## Models (`server/game/models/`)
 

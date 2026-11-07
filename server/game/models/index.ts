@@ -24,3 +24,13 @@ export function initModels(sequelize: Sequelize): void {
 }
 
 export { UserModel, SessionModel, PlayerModel, ChatMessageModel, SectorModel, DailyQuestModel, UserQuestCompletionModel, PlayerTournamentStatsModel, TournamentWinnerModel, UserTitleModel };
+
+export type {
+  PlayerAttributes,
+  PlayerCreationAttributes,
+  PlayerResources,
+  MonsterProgressEntry,
+  PlayerMutationState,
+} from "./player.model";
+export type { UserAttributes, UserCreationAttributes } from "./user.model";
+export type { SessionAttributes, SessionCreationAttributes } from "./session.model";

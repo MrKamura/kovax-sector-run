@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import { getSkillDef } from "@/lib/skills";
+import { getSkillDef } from "../../server/game/shared/skills";
 import {
   getEffectiveEnergyCost,
   getContinuousBeamParams,
@@ -17,7 +17,7 @@ import {
   FURY_SKILL_ID,
   TELEPORT_SKILL_ID,
   GRAVITY_PIT_SKILL_ID,
-} from "@/lib/mutation";
+} from "../../server/game/shared/mutation";
 
 export type PlayerState = {
   id: number;

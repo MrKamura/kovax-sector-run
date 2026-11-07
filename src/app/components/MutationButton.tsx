@@ -2,14 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { useGameStore } from "@/store/gameStore";
-import { getSkillDef } from "@/lib/skills";
+import { getSkillDef } from "../../../server/game/shared/skills";
 import {
   MUTATION_SKILL_IDS,
   MUTATION_MAX_LEVEL,
   getSkillLevelCost,
   getEffectiveEnergyCost,
   formatDuration,
-} from "@/lib/mutation";
+} from "../../../server/game/shared/mutation";
 import styles from "../page.module.css";
 
 export function MutationButton() {

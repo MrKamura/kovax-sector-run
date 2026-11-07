@@ -55,7 +55,7 @@ import {
   type InterpolateRemotePlayersContext,
 } from "./PhaserArena/remotePlayers";
 import { parseSocketMessage } from "./PhaserArena/socketSchemas";
-import { getContinuousBeamParams, getAccelerationParams, getFuryParams, getGravityPitParams } from "@/lib/mutation";
+import { getContinuousBeamParams, getAccelerationParams, getFuryParams, getGravityPitParams } from "../../server/game/shared/mutation";
 
 const createSpaceArenaScene = (
   Phaser: PhaserModule,

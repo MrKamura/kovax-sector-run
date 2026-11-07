@@ -21,7 +21,7 @@ Styles: `src/app/page.module.css`. UI constants: `src/app/constants.ts`.
 - quests / tournament UI state
 - `applyPlayerUpdate` — level-up celebration via `previousLevel` **before** merging the patch
 
-REST wrappers call `src/app/api/**`.
+REST calls go to `/api/*` (served by the game process, `server/rest/`).
 
 ## Phaser
 
@@ -51,25 +51,17 @@ localStorage:
 
 After all hints: WS `tutorial_complete` + UI “newbie shield”.
 
-## REST API (`src/app/api/`)
+## REST API (served by the game process)
 
-`auth/*`, `player`, `collect`, `consume-energy`, `craft`, `damage-player`, `mutation`, `skills`, `upgrade-shelter`, `presence`, `user/nickname|ship|settings`.
-
-Zod schemas: `src/lib/schemas/` where present.
+`/api/*` is handled by `server/rest/` (intercepted before Next in `bootstrap.ts`); the client just fetches relative URLs. Endpoints: `auth/*` (login, register, logout, me, change-password), `player` (GET), `collect`, `consume-energy`, `craft`, `damage-player`, `mutation` (GET/POST), `skills` (POST/PUT), `upgrade-shelter`, `user/nickname|ship|settings`. Details: [server.md](./server.md#rest-api-serverrest).
 
 ## lib (`src/lib/`)
 
 | File | Role |
 |------|------|
-| `auth.ts` | PBKDF2 (120 000 iter, sha256, `salt:hash`), sessions (30 d TTL), `getUserFromSession`, `refreshSession`, `revokeSession` |
-| `db.ts` | Shared Sequelize singleton (Next API side) |
-| `modelInit.ts` | Inits `server/game/models` for the API side; `sequelize.sync()` unless `DB_SYNC=false` (`DB_SYNC_ALTER=true` → alter) |
-| `skills.ts` | 7 skill definitions (energy cost, duration, cooldown, `serverEffect`), 9 skill slots |
-| `mutation.ts` | Purchase/upgrade costs per skill level 1–5; upgrades finish offline via absolute `endsAt` |
-| `recipes.ts` | Crafting recipes |
-| `playerRepo.ts` | Player row helpers for API routes |
-| `gameDefaults.ts` / `gameBranding.ts` | Default player state, branding |
-| `schemas/` | Zod schemas for API payloads |
+| `gameBranding.ts` | Game/studio names (title, intro) |
+
+Shared game logic (skills, mutations, defaults, recipes) lives in **`server/game/shared/`** and is imported by the client via relative paths (`../../server/game/shared/...`) — single source of truth for client and server.
 
 ## Socket details
 

@@ -28,5 +28,5 @@ Before exploring code, open **`docs/`**. Do not walk the whole repo if these fil
 | Balance / tick | `server/game/config/constants.ts`, `world-tick.service.ts` |
 | Client socket | `src/components/PhaserArena.tsx`, `PhaserArena/socketSchemas.ts` |
 | UI state | `src/store/gameStore.ts` |
-| REST API | `src/app/api/**` |
+| REST API | `server/rest/` (served by the game process before Next) |
 | Screen orchestration | `src/app/page.tsx` |

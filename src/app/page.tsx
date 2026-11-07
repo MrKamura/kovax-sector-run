@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import styles from "./page.module.css";
 import { useGameStore } from "@/store/gameStore";
 import SpaceArena from "@/components/SpaceArena";
-import { SKILL_SLOT_COUNT } from "@/lib/skills";
+import { SKILL_SLOT_COUNT } from "../../server/game/shared/skills";
 import { AuthScreen } from "@/components/home/AuthScreen";
 import { NicknameScreen } from "./components/NicknameScreen";
 import { ShipSelectScreen } from "./components/ShipSelectScreen";

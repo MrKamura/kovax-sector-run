@@ -17,7 +17,7 @@ Services are wired once in `server/container.ts` (`createGameServices()`), in de
 - **game/world-tick.service.ts** – Game loop: population, black holes, safe zone, enemy movement, vengeance/hunted push.
 - **game/message-handler.service.ts** – WebSocket message handlers.
 - **game/game.gateway.ts** – Attaches WS server to HTTP, handles connect/message/close.
-- **models/** – Sequelize models (shared with the Next API side via `src/lib/modelInit.ts`).
+- **models/** – Sequelize models (used by the game, the REST API in `server/rest/`, and shared by the client via `server/game/shared/`).
 
 ## Running
 

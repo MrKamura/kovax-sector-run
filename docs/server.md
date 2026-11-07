@@ -55,9 +55,9 @@ Types: `mob_kills` | `pvp_kills`. One active quest of a type per sector/day (Mos
 ## Boot order (`server/bootstrap.ts`)
 
 1. dotenv `.env.local` → `.env`; `uncaughtException` / `unhandledRejection` → `process.exit(1)`
-2. Next `prepare()` → HTTP server via `getRequestHandler()`
-3. `createGameServices()` — all services built once, in dependency order (`server/container.ts`)
-4. `SectorService.loadSectorsFromDb` (25 sectors, DB only)
+2. Next `prepare()`
+3. `createGameServices()` — all services built once, in dependency order (`server/container.ts`); `SectorService.loadSectorsFromDb` (25 sectors, DB only); ECONNREFUSED → friendly fix-hint + exit
+4. `createRestRouter(services)` + `http.createServer`: `/api/*` → game REST, else Next handler
 5. `GameGateway.attachToServer(server, services, upgradeHandler)` — container services passed in
 6. `setInterval(runWorldTick, 100 ms)`; hourly check → `finalizeWeek()` at Monday 00:00 (Moscow), guarded by `lastFinalizedWeekStart`
 7. `server.listen(PORT)` — local 3000, Docker 4000; SIGINT/SIGTERM → `DbService.close()`
@@ -74,6 +74,22 @@ Types: `mob_kills` | `pvp_kills`. One active quest of a type per sector/day (Mos
 4. Initial payloads in order: `world` → `self` (+ `vengeance` / `hunted` if active) → `chat_history` (sector) → `chat_history` (global) → `quest_progress` (per active quest, or availability)
 5. `message` → `MessageHandlerService.handle(user, msg, ws, resolved)`; invalid JSON ignored
 6. `close` → remove presence, `savePlayerPosition`, broadcast presence to the sector
+
+## REST API (`server/rest/`)
+
+Served by the game process: `bootstrap.ts` intercepts `/api/*` **before** Next (same port, same origin — client URLs unchanged). Router: `router.ts` (path+method table, JSON body reader with 1 MB cap, 404/500 fallback).
+
+| File | Role |
+|------|------|
+| `http.ts` | `readJsonBody`, `sendJson`, session cookie headers (httpOnly, SameSite=Lax) |
+| `auth.ts` | PBKDF2 (120 000 iter, sha256, `salt:hash`), sessions (30 d TTL, sliding refresh on `me`/`player`), `getUserFromSession`, `revokeSession` |
+| `playerRepo.ts` | `getOrCreatePlayer` (+ mutation state migration, monster-progress sync, passive HP regen on `player` GET only), `statsForLevel`, `expToNextLevel` |
+| `routes/auth.routes.ts` | `POST login/register/logout`, `GET me`, `POST change-password` |
+| `routes/user.routes.ts` | `POST user/nickname` (unique, ≥3), `user/settings` (volumes, chat position/size/opacity), `user/ship` (keeper19/keeper20, saves per-form progress) |
+| `routes/player.routes.ts` | `GET player` (applyRegen), `POST collect` (scrap capped `10+3·(lvl−1)`), `consume-energy`, `craft`, `damage-player` (death: random 1–30% exp/tokens loss), `upgrade-shelter` (cost `12·level` scrap) |
+| `routes/skill.routes.ts` | `GET/POST mutation` (purchase level 1 / upgrade 2–5, timed upgrades via absolute `endsAt`), `POST/PUT skills` (9 slots, purchased-only) |
+
+All handlers use `DbService` models directly — no separate Sequelize instance. The old `sequelize.sync()` auto-creation (client `modelInit`, `DB_SYNC`) is gone: **migrations (`yarn migrate`) are the only schema source**.
 
 ## Balance
 

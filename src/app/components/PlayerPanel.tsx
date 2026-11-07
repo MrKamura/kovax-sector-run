@@ -1,7 +1,7 @@
 "use client";
 
-import { getSkillDef } from "@/lib/skills";
-import { getEffectiveEnergyCost } from "@/lib/mutation";
+import { getSkillDef } from "../../../server/game/shared/skills";
+import { getEffectiveEnergyCost } from "../../../server/game/shared/mutation";
 import styles from "../page.module.css";
 
 type PlayerPanelProps = {

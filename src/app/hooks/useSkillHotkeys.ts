@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { getSkillDef } from "@/lib/skills";
-import { getEffectiveEnergyCost } from "@/lib/mutation";
+import { getSkillDef } from "../../../server/game/shared/skills";
+import { getEffectiveEnergyCost } from "../../../server/game/shared/mutation";
 import { useGameStore } from "@/store/gameStore";
 
 export function useSkillHotkeys(

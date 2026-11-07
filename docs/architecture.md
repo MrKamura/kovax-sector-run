@@ -35,12 +35,13 @@ One Node process: HTTP (Next) + upgrade `/ws` → game WebSocket.
 
 1. `yarn run dev` → `tsx server/bootstrap.ts`
 2. dotenv: `.env.local`, then `.env`
-3. Next prepare + HTTP server
+3. Next prepare
 4. `createGameServices()` — all game services built once, in dependency order (`server/container.ts`)
 5. `SectorService.loadSectorsFromDb`
-6. `GameGateway.attachToServer` — `/ws` to game, else Next upgrade
-7. World tick every `TICK_INTERVAL_MS` (100 ms); SIGINT/SIGTERM → `DbService.close()`
-8. Listen `PORT` (local often 3000; Docker 4000)
+6. REST router (`server/rest/router.ts`) + HTTP server: `/api/*` → game REST, else Next
+7. `GameGateway.attachToServer` — `/ws` to game, else Next upgrade
+8. World tick every `TICK_INTERVAL_MS` (100 ms); SIGINT/SIGTERM → `DbService.close()`
+9. Listen `PORT` (local often 3000; Docker 4000)
 
 ## Boot (prod Docker)
 
@@ -50,12 +51,12 @@ One Node process: HTTP (Next) + upgrade `/ws` → game WebSocket.
 
 ## Auth / session
 
-1. Register/login → PBKDF2 (`src/lib/auth.ts`) → `sessions` table → httpOnly cookie **`session`**
+1. Register/login → PBKDF2 (`server/rest/auth.ts`) → `sessions` table → httpOnly cookie **`session`**
 2. Client: `loadSession()` → `/api/auth/me`; cache `localStorage` key `kovax_user_cache`
 3. WS: cookie on upgrade → `DbService.resolveUser`
 4. Gate: nickname → ship → in-game
 
-Next API and the game server share Sequelize via `src/lib/db.ts` + `src/lib/modelInit.ts` (models from `server/game/models`).
+The REST API (`/api/*`) is served by the game process itself (`server/rest/`) — the same `DbService`/models as the game, intercepted before Next in `bootstrap.ts`. Next only serves the UI.
 
 ## Key constants
 
@@ -64,7 +65,8 @@ Next API and the game server share Sequelize via `src/lib/db.ts` + `src/lib/mode
 | `server/game/config/constants.ts` | World, enemies, black holes, safe zone, death penalty, tick, spawn immunity |
 | `src/app/constants.ts` | Intro, tutorial, splash |
 | `src/components/PhaserArena/constants.ts` | Client spawn-immunity sentinel |
-| `src/lib/skills.ts`, `mutation.ts`, `gameDefaults.ts`, `gameBranding.ts` | Skills, mutations, branding |
+| `server/game/shared/skills.ts`, `mutation.ts`, `gameDefaults.ts`, `recipes.ts` | Skills, mutations, defaults, crafting — shared client/server |
+| `src/lib/gameBranding.ts` | Branding |
 
 ## Time
 

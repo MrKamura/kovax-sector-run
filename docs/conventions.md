@@ -17,7 +17,7 @@ On any meaningful code change, in the same work session:
 2. Add a bullet under `CHANGELOG.md` → `## [Unreleased]` (Added / Changed / Fixed / Removed).
 3. When the user asks for a release: bump `package.json` `version`, move Unreleased notes into a new `## [X.Y.Z] — YYYY-MM-DD` section, clear Unreleased (or leave Planned).
 
-Current version: see `package.json` (`0.5.0` at time of this docs pass).
+Current version: see `package.json` (`0.6.1` at time of this docs pass).
 
 ## DI
 

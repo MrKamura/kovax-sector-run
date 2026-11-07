@@ -16,6 +16,7 @@ import next from "next";
 import { GameGateway } from "./game/game/game.gateway";
 import { runWorldTick, createWorldTickState } from "./game/game/world-tick.service";
 import { createGameServices } from "./container";
+import { createRestRouter } from "./rest/router";
 import { TICK_INTERVAL_MS } from "./game/config/constants";
 
 const port = Number(process.env.PORT || 3000);
@@ -44,7 +45,6 @@ async function bootstrap() {
   console.log("Bootstrap: Next.js ready");
 
   const upgradeHandler = app.getUpgradeHandler();
-  const server = http.createServer((req, res) => handle(req, res));
 
   console.log("Bootstrap: creating game services...");
   let services: ReturnType<typeof createGameServices>;
@@ -76,6 +76,18 @@ async function bootstrap() {
     throw new Error("DbService not properly initialized (DailyQuest model missing)");
   }
   console.log("Bootstrap: game services ready");
+
+  // Game REST API (`/api/*`) is served by the game process; everything else
+  // goes to Next.js (UI, static assets, HMR in dev).
+  const restHandler = createRestRouter(services);
+  const server = http.createServer((req, res) => {
+    const path = (req.url ?? "/").split("?")[0];
+    if (path === "/api" || path.startsWith("/api/")) {
+      void restHandler(req, res);
+      return;
+    }
+    handle(req, res);
+  });
 
   const gameGateway = new GameGateway();
   gameGateway.attachToServer(server, services, upgradeHandler);
