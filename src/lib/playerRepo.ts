@@ -45,7 +45,7 @@ const statsForLevel = (level: number, shipChoice?: string | null) => {
   };
 };
 
-/** Mutation state shape (matches server/nest/models/player.model). */
+/** Mutation state shape (matches server/game/models/player.model). */
 type MutationState = {
   purchasedSkills: string[];
   skillLevels: Record<string, number>;

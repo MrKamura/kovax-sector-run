@@ -16,11 +16,11 @@ RUN yarn install --frozen-lockfile
 # 4. Копируем исходный код
 COPY . .
 
-# 5. Сборка Next.js и Nest-сервера
+# 5. Сборка Next.js и game-сервера
 RUN yarn run build:all
 
 # 6. Удаляем исходники и лишние файлы (освобождаем место на диске)
-RUN rm -rf src server/nest server/bootstrap.ts server/tsconfig.json server/reset-user-quests.js \
+RUN rm -rf src server/game server/bootstrap.ts server/tsconfig.json server/container.ts server/reset-user-quests.js \
     tsconfig.tsbuildinfo .env.example .next/cache
 
 # 7. Удаляем devDependencies (только production)

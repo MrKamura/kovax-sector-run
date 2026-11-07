@@ -19,9 +19,9 @@ On any meaningful code change, in the same work session:
 
 Current version: see `package.json` (`0.5.0` at time of this docs pass).
 
-## Nest / DI
+## DI
 
-Under `createApplicationContext`, injection may fail. Project pattern: construct services in bootstrap and pass `resolved` into gateway / message handler.
+No DI framework (Nest was removed). All game services are plain classes built once in `server/container.ts` (`createGameServices()`), in dependency order, and shared by the gateway, the world tick and the message handler. New service → construct it in the container + add to `GameServices`.
 
 ## Sequelize
 

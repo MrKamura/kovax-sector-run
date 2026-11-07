@@ -48,6 +48,26 @@ Baseline documentation and agent workflow release. Captures gameplay and infra s
 
 ## [Unreleased]
 
+### Added
+
+- Docs set completed: `docs/server.md` (boot order, WS connection flow, balance section), `docs/frontend.md` (`src/lib/`, socket details), `docs/database.md` (full migration list 001–016 + new-migration checklist)
+- `server/container.ts` — plain service container replacing Nest DI (`GameServices`, `createGameServices()`)
+- Graceful shutdown: SIGINT/SIGTERM close the DB pool (`DbService.close()`)
+- ESLint: `server/dist/**` ignored (compiled artifacts were linted before)
+
+### Changed
+
+- Game server: **Nest.js removed** — `@nestjs/common`, `@nestjs/core`, `reflect-metadata`, `rxjs` dropped from dependencies; services are plain classes; the `resolved`-services workaround (`resolved?.x ?? this.x`) is gone; `MessageHandlerService` takes all deps (incl. `TournamentService`) via constructor; `GameGateway.attachToServer(server, services, upgradeHandler)`
+- `server/nest/` → `server/game/` (module files removed); `WorldTickService` class removed — tick runs as `runWorldTick()` function
+- Dockerfile: cleanup step now removes `server/game` + `server/container.ts`
+- `server/bootstrap.ts`: DB connection failure (ECONNREFUSED) now prints a short explanation and fix steps (start the PostgreSQL service / `pg_ctl`) instead of a raw Sequelize stack trace
+
+### Removed
+
+- `@nestjs/common`, `@nestjs/core`, `reflect-metadata`, `rxjs` (direct dependencies)
+- `server/nest/app.module.ts`, `server/nest/game/game.module.ts`
+- `experimentalDecorators` / `emitDecoratorMetadata` from `server/tsconfig.json`
+
 ### Planned
 
 - In-game shop / monetization (not implemented yet)

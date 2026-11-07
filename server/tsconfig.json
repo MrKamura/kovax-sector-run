@@ -10,10 +10,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true
+    "resolveJsonModule": true
   },
-  "include": ["*.ts", "nest/**/*.ts"],
+  "include": ["*.ts", "game/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

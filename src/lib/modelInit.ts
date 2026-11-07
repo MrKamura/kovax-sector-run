@@ -4,7 +4,7 @@ import {
   UserModel,
   SessionModel,
   PlayerModel,
-} from "../../server/nest/models";
+} from "../../server/game/models";
 
 let modelsReady = false;
 

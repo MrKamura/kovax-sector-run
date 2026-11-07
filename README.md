@@ -1,6 +1,6 @@
 # Kovax: Sector Run
 
-Browser online RPG (keepers, sectors, PvP/PvE). Stack: **Next.js**, **Nest (game context)**, **Phaser**, **Sequelize + PostgreSQL**, **Zustand**. Package manager: **Yarn**.
+Browser online RPG (keepers, sectors, PvP/PvE). Stack: **Next.js**, **Phaser**, **Sequelize + PostgreSQL**, **Zustand**. Game services — plain TypeScript classes (`server/container.ts`, no DI framework). Package manager: **Yarn**.
 
 **Version:** `0.5.0` — see [CHANGELOG.md](./CHANGELOG.md).
 

@@ -88,4 +88,4 @@ So:
 - **Mob damage:** about **4–5** per hit (so **~20–25 hits** to kill a 100 HP player).
 - **Player:** 160 ms between shots, 150 ms between mob hits when overlapping.
 
-No code changes in this doc; use these ranges to tune `ENEMY_HEALTH`, `BASE_ENEMY_DAMAGE`, and the per-level terms in `enemyStatsForLevel` in `server/nest/config/constants.ts` and `server/nest/game/utils.ts` if you want to match this “comfortable” band.
+No code changes in this doc; use these ranges to tune `ENEMY_HEALTH`, `BASE_ENEMY_DAMAGE`, and the per-level terms in `enemyStatsForLevel` in `server/game/config/constants.ts` and `server/game/game/utils.ts` if you want to match this “comfortable” band.

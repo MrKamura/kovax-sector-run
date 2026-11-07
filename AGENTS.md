@@ -5,7 +5,7 @@ Before exploring code, open **`docs/`**. Do not walk the whole repo if these fil
 | Doc | When to read |
 |-----|----------------|
 | [docs/architecture.md](docs/architecture.md) | Start of any task, boot, deploy |
-| [docs/server.md](docs/server.md) | WS, Nest game services, balance |
+| [docs/server.md](docs/server.md) | WS, game services, balance |
 | [docs/frontend.md](docs/frontend.md) | UI, Zustand, Phaser |
 | [docs/database.md](docs/database.md) | Sequelize, migrations |
 | [docs/conventions.md](docs/conventions.md) | Before commits / risky changes |
@@ -23,9 +23,9 @@ Before exploring code, open **`docs/`**. Do not walk the whole repo if these fil
 
 | Area | Paths |
 |------|-------|
-| WS handlers | `server/nest/game/message-handler.service.ts` |
-| Connect / spawn | `server/nest/game/game.gateway.ts` |
-| Balance / tick | `server/nest/config/constants.ts`, `world-tick.service.ts` |
+| WS handlers | `server/game/game/message-handler.service.ts` |
+| Connect / spawn | `server/game/game/game.gateway.ts` |
+| Balance / tick | `server/game/config/constants.ts`, `world-tick.service.ts` |
 | Client socket | `src/components/PhaserArena.tsx`, `PhaserArena/socketSchemas.ts` |
 | UI state | `src/store/gameStore.ts` |
 | REST API | `src/app/api/**` |

@@ -56,3 +56,26 @@ After all hints: WS `tutorial_complete` + UI “newbie shield”.
 `auth/*`, `player`, `collect`, `consume-energy`, `craft`, `damage-player`, `mutation`, `skills`, `upgrade-shelter`, `presence`, `user/nickname|ship|settings`.
 
 Zod schemas: `src/lib/schemas/` where present.
+
+## lib (`src/lib/`)
+
+| File | Role |
+|------|------|
+| `auth.ts` | PBKDF2 (120 000 iter, sha256, `salt:hash`), sessions (30 d TTL), `getUserFromSession`, `refreshSession`, `revokeSession` |
+| `db.ts` | Shared Sequelize singleton (Next API side) |
+| `modelInit.ts` | Inits `server/game/models` for the API side; `sequelize.sync()` unless `DB_SYNC=false` (`DB_SYNC_ALTER=true` → alter) |
+| `skills.ts` | 7 skill definitions (energy cost, duration, cooldown, `serverEffect`), 9 skill slots |
+| `mutation.ts` | Purchase/upgrade costs per skill level 1–5; upgrades finish offline via absolute `endsAt` |
+| `recipes.ts` | Crafting recipes |
+| `playerRepo.ts` | Player row helpers for API routes |
+| `gameDefaults.ts` / `gameBranding.ts` | Default player state, branding |
+| `schemas/` | Zod schemas for API payloads |
+
+## Socket details
+
+- `ReconnectingWebSocket` (`socketHandlers.ts`): 800–5000 ms backoff (×1.2), 10 s connection timeout, unlimited retries
+- Clock sync: `serverTime` in `world` / `presence` payloads → smoothed client offset (lerp 0.1)
+- Client → server `update` is throttled; server persists position at most every 2 s
+- Zod: `socketMessageSchema` (inbound) + `outgoingMessageSchema` (outbound) in `socketSchemas.ts`; chat, tournament and `tutorial_complete` payloads are parsed raw outside the union
+- UI buttons (quests, tournament) reuse the arena socket via `getGlobalSocket` / `setGlobalSocket` in `QuestButton.tsx`
+

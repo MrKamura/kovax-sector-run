@@ -1,6 +1,6 @@
 # Kovax: Sector Run — documentation
 
-Browser online RPG (keepers, sectors, PvP/PvE). Stack: **Next.js + Nest (application context) + Phaser + PostgreSQL/Sequelize**, one HTTP process, WebSocket on `/ws`.
+Browser online RPG (keepers, sectors, PvP/PvE). Stack: **Next.js + Phaser + PostgreSQL/Sequelize**, one HTTP process, WebSocket on `/ws`. Game services — plain TypeScript classes wired in `server/container.ts` (no DI framework).
 
 ## For AI agents
 
@@ -14,7 +14,7 @@ Read in this order (saves tokens — avoid full-repo scans):
    - [database.md](./database.md) — models, migrations
 4. [conventions.md](./conventions.md) — gotchas before editing
 
-Also: [../CHANGELOG.md](../CHANGELOG.md) (versions), [MOB_BALANCE_ANALYSIS.md](./MOB_BALANCE_ANALYSIS.md), [../.github/DEPLOY.md](../.github/DEPLOY.md), [../server/nest/README.md](../server/nest/README.md).
+Also: [../CHANGELOG.md](../CHANGELOG.md) (versions), [MOB_BALANCE_ANALYSIS.md](./MOB_BALANCE_ANALYSIS.md), [../.github/DEPLOY.md](../.github/DEPLOY.md), [../server/game/README.md](../server/game/README.md).
 
 **Current version:** see `package.json` / [CHANGELOG.md](../CHANGELOG.md). Keep docs + changelog updated whenever code changes.
 

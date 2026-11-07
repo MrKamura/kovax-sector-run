@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import * as dotenv from "dotenv";
 dotenv.config({ path: ".env.local" });
 dotenv.config();
@@ -14,23 +13,28 @@ process.on("unhandledRejection", (reason, promise) => {
 
 import http from "http";
 import next from "next";
-import { NestFactory } from "@nestjs/core";
-import { AppModule } from "./nest/app.module";
-import { GameGateway } from "./nest/game/game.gateway";
-import { runWorldTick, createWorldTickState } from "./nest/game/world-tick.service";
-import { SectorService } from "./nest/game/sector.service";
-import { PresenceService } from "./nest/game/presence.service";
-import { BroadcastService } from "./nest/game/broadcast.service";
-import { ChatService } from "./nest/game/chat.service";
-import { MessageHandlerService } from "./nest/game/message-handler.service";
-import { PlayerService } from "./nest/game/player.service";
-import { QuestService } from "./nest/game/quest.service";
-import { TournamentService } from "./nest/game/tournament.service";
-import { DbService } from "./nest/game/db.service";
-import { TICK_INTERVAL_MS } from "./nest/config/constants";
+import { GameGateway } from "./game/game/game.gateway";
+import { runWorldTick, createWorldTickState } from "./game/game/world-tick.service";
+import { createGameServices } from "./container";
+import { TICK_INTERVAL_MS } from "./game/config/constants";
 
 const port = Number(process.env.PORT || 3000);
 const dev = process.env.NODE_ENV !== "production";
+
+function isDbConnectionError(error: unknown): boolean {
+  const err = error as {
+    name?: string;
+    code?: string;
+    message?: string;
+    parent?: { code?: string };
+  };
+  return (
+    err?.name === "SequelizeConnectionRefusedError" ||
+    err?.code === "ECONNREFUSED" ||
+    err?.parent?.code === "ECONNREFUSED" ||
+    (err?.message ?? "").includes("ECONNREFUSED")
+  );
+}
 
 async function bootstrap() {
   console.log("Bootstrap: starting Next.js...");
@@ -42,87 +46,56 @@ async function bootstrap() {
   const upgradeHandler = app.getUpgradeHandler();
   const server = http.createServer((req, res) => handle(req, res));
 
-  console.log("Bootstrap: starting Nest...");
-  let nestApp;
+  console.log("Bootstrap: creating game services...");
+  let services: ReturnType<typeof createGameServices>;
   try {
-    nestApp = await NestFactory.createApplicationContext(AppModule, {
-      logger: ["error", "warn"],
-    });
-    console.log("Bootstrap: Nest context created");
-  } catch (err) {
-    console.error("Bootstrap: Nest init failed:", err);
-    throw err;
-  }
-  const db = nestApp.get(DbService);
-  const sectorService = nestApp.get(SectorService);
-  await sectorService.loadSectorsFromDb(db);
-
-  // Проверяем, что DbService правильно инициализирован
-  if (!db.DailyQuest) {
-    console.error("Bootstrap: db.DailyQuest is undefined!");
-  } else {
-    console.log("Bootstrap: db.DailyQuest initialized successfully");
-  }
-
-  const gameGateway = nestApp.get(GameGateway);
-  const worldTickState = createWorldTickState();
-
-  // Получаем все сервисы
-  const resolvedDb = nestApp.get(DbService);
-  const resolvedPlayer = nestApp.get(PlayerService);
-  
-  // Убеждаемся, что DbService полностью инициализирован перед получением QuestService
-  if (!resolvedDb.DailyQuest) {
-    console.error("Bootstrap: db.DailyQuest is undefined before getting QuestService!");
-    throw new Error("DbService not properly initialized");
-  }
-  
-  // Создаем QuestService вручную с правильными зависимостями
-  // Это необходимо, так как createApplicationContext не всегда правильно инжектирует зависимости
-  const resolvedQuest = new QuestService(resolvedDb, resolvedPlayer);
-  
-  // Проверяем, что quest имеет db
-  if (!resolvedQuest) {
-    console.error("Bootstrap: resolvedQuest is undefined!");
-  } else {
-    // Проверяем, что quest имеет доступ к db
-    const questDb = (resolvedQuest as any).db;
-    if (!questDb) {
-      console.error("Bootstrap: resolvedQuest.db is undefined!");
-    } else if (!questDb.DailyQuest) {
-      console.error("Bootstrap: resolvedQuest.db.DailyQuest is undefined!");
-    } else {
-      console.log("Bootstrap: resolvedQuest.db.DailyQuest initialized successfully");
+    services = createGameServices();
+    await services.sectorService.loadSectorsFromDb(services.db);
+  } catch (error) {
+    if (isDbConnectionError(error)) {
+      const dbUrl = (process.env.DATABASE_URL ?? "").replace(/:([^:@/]+)@/, ":***@");
+      console.error(
+        [
+          "",
+          "Could not connect to PostgreSQL (ECONNREFUSED) — the database server is not running.",
+          `Database connection: ${dbUrl || "(DATABASE_URL is not set in .env.local)"}`,
+          "",
+          "Fix it (pick one), then re-run \"yarn dev\":",
+          "  1. Start the Windows service — PowerShell as Administrator:",
+          "       Start-Service postgresql-x64-14",
+          "  2. Or start the server manually:",
+          "       & 'C:\\Program Files\\PostgreSQL\\14\\bin\\pg_ctl.exe' start -D 'C:\\Program Files\\PostgreSQL\\14\\data'",
+          "",
+        ].join("\n")
+      );
+      process.exit(1);
     }
+    throw error;
   }
+  if (!services.db.DailyQuest) {
+    throw new Error("DbService not properly initialized (DailyQuest model missing)");
+  }
+  console.log("Bootstrap: game services ready");
 
-  const resolvedTournament = new TournamentService(resolvedDb);
+  const gameGateway = new GameGateway();
+  gameGateway.attachToServer(server, services, upgradeHandler);
 
-  // Pass resolved services so gateway works when Nest does not inject deps (createApplicationContext)
-  gameGateway.attachToServer(server, upgradeHandler, {
-    db: resolvedDb,
-    presence: nestApp.get(PresenceService),
-    sectorService: nestApp.get(SectorService),
-    broadcast: nestApp.get(BroadcastService),
-    chat: nestApp.get(ChatService),
-    messageHandler: nestApp.get(MessageHandlerService),
-    player: nestApp.get(PlayerService),
-    quest: resolvedQuest,
-    tournament: resolvedTournament,
-  });
-  setInterval(() => {
-    runWorldTick(
-      {
-        sectorService: nestApp.get(SectorService),
-        presence: nestApp.get(PresenceService),
-        broadcast: nestApp.get(BroadcastService),
-        player: nestApp.get(PlayerService),
-        db: resolvedDb,
-        quest: resolvedQuest,
-      },
-      worldTickState
-    );
-  }, TICK_INTERVAL_MS);
+  const worldTickState = createWorldTickState();
+  setInterval(
+    () =>
+      runWorldTick(
+        {
+          sectorService: services.sectorService,
+          presence: services.presence,
+          broadcast: services.broadcast,
+          player: services.player,
+          db: services.db,
+          quest: services.quest,
+        },
+        worldTickState
+      ),
+    TICK_INTERVAL_MS
+  );
 
   let lastFinalizedWeekStart: string | null = null;
   setInterval(() => {
@@ -131,14 +104,23 @@ async function bootstrap() {
     const isMonday = moscow.getUTCDay() === 1;
     const hour = moscow.getUTCHours();
     if (isMonday && hour === 0) {
-      const weekStart = resolvedTournament.getWeekStartUTC();
+      const weekStart = services.tournament.getWeekStartUTC();
       const key = weekStart.toISOString();
       if (lastFinalizedWeekStart !== key) {
         lastFinalizedWeekStart = key;
-        void resolvedTournament.finalizeWeek();
+        void services.tournament.finalizeWeek();
       }
     }
   }, 60 * 60 * 1000);
+
+  const shutdown = (signal: string) => {
+    console.log(`Bootstrap: ${signal} received, shutting down...`);
+    services.db.close()
+      .catch(() => {})
+      .finally(() => process.exit(0));
+  };
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
 
   server.listen(port, () => {
     console.log(`Server ready on http://localhost:${port}`);
