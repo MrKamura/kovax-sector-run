@@ -437,7 +437,7 @@ export class QuestService {
       console.log(`[QuestService] getQuestInfo: userId=${userId}, sectorId=${sectorId}, questType=${questType || 'all'}, todayStartUTC=${todayStartUTC.toISOString()}, now=${now.toISOString()}`);
       
       // Проверяем квесты для этого сектора сегодня (только указанного типа, если указан)
-      const whereClause: any = {
+      const whereClause: { userId: number; sectorId: string; startedAt: { [Op.gte]: Date }; questType?: QuestType } = {
         userId,
         sectorId,
         startedAt: {
@@ -615,7 +615,7 @@ export class QuestService {
       }
       // Удаляем активные квесты в секторе (только указанного типа, если указан)
       // Удаляем только активные (не завершённые) квесты, чтобы пользователь мог взять их снова
-      const whereClause: any = {
+      const whereClause: { userId: number; sectorId: string; completedAt: null; questType?: QuestType } = {
         userId,
         sectorId,
         completedAt: null, // Только активные квесты (не завершённые)

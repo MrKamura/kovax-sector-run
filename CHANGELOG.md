@@ -96,6 +96,36 @@ REST API moved into the game process. One Sequelize / `DbService` for HTTP and W
 
 ---
 
+## [0.6.2] — 2026-11-08
+
+Next.js removed. The client is a Vite + React SPA hosted by the game process.
+
+### Added
+
+- `vite.config.mts`, `index.html`, `src/main.tsx` — Vite SPA entry
+- `server/static.ts` — production static serving of `client-dist/` (SPA fallback, immutable hashed assets, path-traversal guard)
+- ESLint: `typescript-eslint` + `eslint-plugin-react-hooks` (+ node globals for plain `*.js` scripts) replaces `eslint-config-next`
+
+### Changed
+
+- **Next.js removed**: dev — Vite middleware inside the game server (same port, HMR via `vite-hmr` WebSocket); prod — `server/static.ts` serves `client-dist/`
+- Client restructure: `src/app/page.tsx` → `src/App.tsx`; `src/app/components/*` → `src/components/`; `src/app/hooks/` → `src/hooks/`; `src/app/{constants,types,page.module.css,globals.css}` → `src/`; `src/app/favicon.ico` → `public/favicon.ico`
+- Scripts: `build` = `vite build && tsc -p server/tsconfig.json` (plus `build:client`); `build:all` removed
+- Dockerfile: `yarn run build`; cleanup drops `vite.config.mts`/`index.html`; `@next/swc` + `@img/sharp` pruning removed; container user renamed to `appuser`
+- Lint fixes in game services: `Number(x) ?? fallback` → `Number.isFinite(...)` guards, typed `whereClause` objects, `StatRow` in tournament service
+
+### Fixed
+
+- Dockerfile cleanup now removes `vite.config.mts` (was wrongly `vite.config.ts`)
+
+### Removed
+
+- `next`, `eslint-config-next`, `concurrently`
+- `src/app/layout.tsx` (Next root layout + unused `next/font` Geist fonts), `next.config.ts`, `next-env.d.ts`
+- `public/{file,globe,vercel,window}.svg` (unreferenced boilerplate)
+
+---
+
 ## [Unreleased]
 
 ### Planned

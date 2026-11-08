@@ -856,7 +856,7 @@ const createSpaceArenaScene = (
             // Экспортируем socket для использования в других компонентах
             if (typeof window !== "undefined") {
               // Используем динамический импорт для избежания циклических зависимостей
-              import("@/app/components/QuestButton")
+              import("@/components/QuestButton")
                 .then((module) => {
                   module.setGlobalSocket(ws as WebSocket);
                 })

@@ -55,9 +55,9 @@ Types: `mob_kills` | `pvp_kills`. One active quest of a type per sector/day (Mos
 ## Boot order (`server/bootstrap.ts`)
 
 1. dotenv `.env.local` → `.env`; `uncaughtException` / `unhandledRejection` → `process.exit(1)`
-2. Next `prepare()`
+2. Dev: Vite dev server (`vite.config.mts`, middleware mode, HMR WS on this server); prod: static handler for `client-dist/`
 3. `createGameServices()` — all services built once, in dependency order (`server/container.ts`); `SectorService.loadSectorsFromDb` (25 sectors, DB only); ECONNREFUSED → friendly fix-hint + exit
-4. `createRestRouter(services)` + `http.createServer`: `/api/*` → game REST, else Next handler
+4. `createRestRouter(services)` + `http.createServer`: `/api/*` → game REST, else client UI (Vite middleware / static)
 5. `GameGateway.attachToServer(server, services, upgradeHandler)` — container services passed in
 6. `setInterval(runWorldTick, 100 ms)`; hourly check → `finalizeWeek()` at Monday 00:00 (Moscow), guarded by `lastFinalizedWeekStart`
 7. `server.listen(PORT)` — local 3000, Docker 4000; SIGINT/SIGTERM → `DbService.close()`
@@ -77,7 +77,7 @@ Types: `mob_kills` | `pvp_kills`. One active quest of a type per sector/day (Mos
 
 ## REST API (`server/rest/`)
 
-Served by the game process: `bootstrap.ts` intercepts `/api/*` **before** Next (same port, same origin — client URLs unchanged). Router: `router.ts` (path+method table, JSON body reader with 1 MB cap, 404/500 fallback).
+Served by the game process: `bootstrap.ts` intercepts `/api/*` **before** the client UI (same port, same origin — client URLs unchanged). Router: `router.ts` (path+method table, JSON body reader with 1 MB cap, 404/500 fallback).
 
 | File | Role |
 |------|------|

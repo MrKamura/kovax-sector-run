@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { createSpaceArenaScene } from "./PhaserArena";

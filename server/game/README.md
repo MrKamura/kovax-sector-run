@@ -22,7 +22,7 @@ Services are wired once in `server/container.ts` (`createGameServices()`), in de
 ## Running
 
 1. Install dependencies: `yarn install`
-2. **Development:** `yarn dev` (runs `tsx server/bootstrap.ts` – Next.js + WS on one server)
+2. **Development:** `yarn dev` (runs `tsx server/bootstrap.ts` — UI via Vite middleware + REST + WS on one server)
 3. **Production:** `yarn build:server` then `node server/bootstrap-loader.js` (runs compiled `server/dist/bootstrap.js`)
 
 `yarn dev` and `yarn start` use the game server (`server/bootstrap.ts` / `server/dist/bootstrap.js`).

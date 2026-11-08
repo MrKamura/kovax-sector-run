@@ -194,14 +194,14 @@ export class MessageHandlerService {
     if (!next) return;
 
     startSpawnImmunityIfNeeded(next, user.id, services);
-    const newX = Number(message.x) ?? next.x;
-    const newY = Number(message.y) ?? next.y;
+    const newX = Number.isFinite(Number(message.x)) ? Number(message.x) : next.x;
+    const newY = Number.isFinite(Number(message.y)) ? Number(message.y) : next.y;
     const moved = newX !== next.x || newY !== next.y;
     if (moved) startSpawnImmunityIfNeeded(next, user.id, services);
 
     next.x = newX;
     next.y = newY;
-    next.rotation = Number(message.rotation) ?? next.rotation;
+    next.rotation = Number.isFinite(Number(message.rotation)) ? Number(message.rotation) : next.rotation;
     if (message.shipChoice === "keeper19" || message.shipChoice === "keeper20") {
       next.shipChoice = message.shipChoice as string;
     }
@@ -251,9 +251,9 @@ export class MessageHandlerService {
       const progress = (playerRow.monsterProgress as Record<string, unknown>) || {};
       const monsterKey = normalizeMonsterChoice(entry.shipChoice);
       const stored = getMonsterProgressEntry(progress, monsterKey) || {};
-      let exp = Number(stored.exp ?? playerRow.exp ?? 0) || 0;
+      const exp = Number(stored.exp ?? playerRow.exp ?? 0) || 0;
       const level = Number(stored.level ?? 1) || 1;
-      const expToNext = Number(stored.expToNext) ?? expToNextLevel(level);
+      const expToNext = Number.isFinite(Number(stored.expToNext)) ? Number(stored.expToNext) : expToNextLevel(level);
 
       const percent = Math.max(0, Math.min(100, penaltyPercent)) / 100;
       let lostExp = Math.floor(exp * percent);
@@ -1718,7 +1718,7 @@ export class MessageHandlerService {
       const questToCancel = questType ? allActiveQuests.find(q => q.questType === questType) : null;
       
       // Дополнительная проверка: ищем квест напрямую в БД для диагностики
-      const whereClause: any = {
+      const whereClause: { userId: number; sectorId: string; completedAt: null; questType?: "mob_kills" | "pvp_kills" } = {
         userId: user.id,
         sectorId: presenceEntry.sectorId,
         completedAt: null,

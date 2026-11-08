@@ -114,8 +114,8 @@ class GameGateway {
                         level = Number(stored.level) || 1;
                         exp = Number(stored.exp) || 0;
                         expToNext = Number(stored.expToNext) || (0, utils_1.expToNextLevel)(level);
-                        maxHealth = Number(stored.maxHealth) ?? (0, utils_1.playerStatsForLevel)(level, monsterKey).maxHealth;
-                        damage = Number(stored.damage) ?? (0, utils_1.playerStatsForLevel)(level, monsterKey).damage;
+                        maxHealth = Number.isFinite(Number(stored.maxHealth)) ? Number(stored.maxHealth) : (0, utils_1.playerStatsForLevel)(level, monsterKey).maxHealth;
+                        damage = Number.isFinite(Number(stored.damage)) ? Number(stored.damage) : (0, utils_1.playerStatsForLevel)(level, monsterKey).damage;
                         health = Number(stored.health) || maxHealth;
                     }
                     else {

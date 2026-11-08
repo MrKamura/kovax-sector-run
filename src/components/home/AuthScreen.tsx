@@ -1,7 +1,5 @@
-"use client";
-
 import { useState, useRef } from "react";
-import styles from "@/app/page.module.css";
+import styles from "@/page.module.css";
 import { GAME_TITLE } from "@/lib/gameBranding";
 
 interface AuthScreenProps {

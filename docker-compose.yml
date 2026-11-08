@@ -25,7 +25,7 @@ services:
       - kovax-network
 
   app:
-    # Serves Next.js + Nest (WebSocket/game) via server/dist/bootstrap.js
+    # Serves the UI (static client-dist/) + REST + WebSocket/game via server/dist/bootstrap.js
     build:
       context: .
       dockerfile: dockerfile

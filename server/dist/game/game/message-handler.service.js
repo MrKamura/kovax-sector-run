@@ -124,14 +124,14 @@ class MessageHandlerService {
         if (!next)
             return;
         startSpawnImmunityIfNeeded(next, user.id, services);
-        const newX = Number(message.x) ?? next.x;
-        const newY = Number(message.y) ?? next.y;
+        const newX = Number.isFinite(Number(message.x)) ? Number(message.x) : next.x;
+        const newY = Number.isFinite(Number(message.y)) ? Number(message.y) : next.y;
         const moved = newX !== next.x || newY !== next.y;
         if (moved)
             startSpawnImmunityIfNeeded(next, user.id, services);
         next.x = newX;
         next.y = newY;
-        next.rotation = Number(message.rotation) ?? next.rotation;
+        next.rotation = Number.isFinite(Number(message.rotation)) ? Number(message.rotation) : next.rotation;
         if (message.shipChoice === "keeper19" || message.shipChoice === "keeper20") {
             next.shipChoice = message.shipChoice;
         }
@@ -182,9 +182,9 @@ class MessageHandlerService {
             const progress = playerRow.monsterProgress || {};
             const monsterKey = (0, utils_1.normalizeMonsterChoice)(entry.shipChoice);
             const stored = (0, utils_1.getMonsterProgressEntry)(progress, monsterKey) || {};
-            let exp = Number(stored.exp ?? playerRow.exp ?? 0) || 0;
+            const exp = Number(stored.exp ?? playerRow.exp ?? 0) || 0;
             const level = Number(stored.level ?? 1) || 1;
-            const expToNext = Number(stored.expToNext) ?? (0, utils_1.expToNextLevel)(level);
+            const expToNext = Number.isFinite(Number(stored.expToNext)) ? Number(stored.expToNext) : (0, utils_1.expToNextLevel)(level);
             const percent = Math.max(0, Math.min(100, penaltyPercent)) / 100;
             let lostExp = Math.floor(exp * percent);
             let lostTokens = Math.floor(tokens * percent);

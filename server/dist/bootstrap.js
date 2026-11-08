@@ -48,14 +48,16 @@ process.on("unhandledRejection", (reason, promise) => {
     process.exit(1);
 });
 const http_1 = __importDefault(require("http"));
-const next_1 = __importDefault(require("next"));
+const fs_1 = require("fs");
+const path_1 = __importDefault(require("path"));
 const game_gateway_1 = require("./game/game/game.gateway");
 const world_tick_service_1 = require("./game/game/world-tick.service");
 const container_1 = require("./container");
 const router_1 = require("./rest/router");
+const static_1 = require("./static");
 const constants_1 = require("./game/config/constants");
 const port = Number(process.env.PORT || 3000);
-const dev = process.env.NODE_ENV !== "production";
+const isProd = process.env.NODE_ENV === "production";
 function isDbConnectionError(error) {
     const err = error;
     return (err?.name === "SequelizeConnectionRefusedError" ||
@@ -64,12 +66,6 @@ function isDbConnectionError(error) {
         (err?.message ?? "").includes("ECONNREFUSED"));
 }
 async function bootstrap() {
-    console.log("Bootstrap: starting Next.js...");
-    const app = (0, next_1.default)({ dev, port });
-    const handle = app.getRequestHandler();
-    await app.prepare();
-    console.log("Bootstrap: Next.js ready");
-    const upgradeHandler = app.getUpgradeHandler();
     console.log("Bootstrap: creating game services...");
     let services;
     try {
@@ -99,19 +95,72 @@ async function bootstrap() {
         throw new Error("DbService not properly initialized (DailyQuest model missing)");
     }
     console.log("Bootstrap: game services ready");
-    // Game REST API (`/api/*`) is served by the game process; everything else
-    // goes to Next.js (UI, static assets, HMR in dev).
     const restHandler = (0, router_1.createRestRouter)(services);
+    // UI: in dev, Vite runs as middleware inside this server (same port, HMR
+    // included); in production, the static client build is served from client-dist/.
+    let viteDev = null;
+    let staticHandler = null;
     const server = http_1.default.createServer((req, res) => {
-        const path = (req.url ?? "/").split("?")[0];
-        if (path === "/api" || path.startsWith("/api/")) {
+        const urlPath = (req.url ?? "/").split("?")[0];
+        if (urlPath === "/api" || urlPath.startsWith("/api/")) {
             void restHandler(req, res);
             return;
         }
-        handle(req, res);
+        if (viteDev) {
+            viteDev.middlewares(req, res, (err) => {
+                if (err) {
+                    console.error("Vite middleware error:", err);
+                    if (!res.headersSent)
+                        res.writeHead(500);
+                    res.end("Internal Server Error");
+                }
+                else if (!res.headersSent) {
+                    res.writeHead(404);
+                    res.end("Not Found");
+                }
+            });
+            return;
+        }
+        staticHandler(req, res, () => {
+            res.writeHead(404);
+            res.end("Not Found");
+        });
     });
+    if (isProd) {
+        // In production bootstrap runs from server/dist/, so the client build is two levels up.
+        const clientDir = path_1.default.resolve(__dirname, "..", "..", "client-dist");
+        if (!(0, fs_1.existsSync)(path_1.default.join(clientDir, "index.html"))) {
+            console.error(`Bootstrap: client build not found at ${clientDir} — run "yarn build" first.`);
+            process.exit(1);
+        }
+        staticHandler = (0, static_1.createStaticHandler)(clientDir);
+        console.log("Bootstrap: serving static client from client-dist/");
+    }
+    else {
+        const viteSpecifier = "vite";
+        const { createServer } = (await Promise.resolve(`${viteSpecifier}`).then(s => __importStar(require(s))));
+        viteDev = await createServer({
+            configFile: path_1.default.resolve(__dirname, "..", "vite.config.mts"),
+            server: {
+                middlewareMode: true,
+                port,
+                // Route HMR websocket upgrades through this server (Vite attaches its
+                // own "upgrade" listener for the vite-hmr/vite-ping protocols).
+                ws: { server },
+            },
+        });
+        console.log("Bootstrap: Vite dev server ready (HMR enabled)");
+    }
     const gameGateway = new game_gateway_1.GameGateway();
-    gameGateway.attachToServer(server, services, upgradeHandler);
+    gameGateway.attachToServer(server, services, (request, socket) => {
+        const protocol = request.headers["sec-websocket-protocol"];
+        if (!isProd && (protocol === "vite-hmr" || protocol === "vite-ping")) {
+            // Handled by Vite's own upgrade listener; leave the socket alone.
+            return Promise.resolve();
+        }
+        socket.destroy();
+        return Promise.resolve();
+    });
     const worldTickState = (0, world_tick_service_1.createWorldTickState)();
     setInterval(() => (0, world_tick_service_1.runWorldTick)({
         sectorService: services.sectorService,
@@ -138,9 +187,12 @@ async function bootstrap() {
     }, 60 * 60 * 1000);
     const shutdown = (signal) => {
         console.log(`Bootstrap: ${signal} received, shutting down...`);
-        services.db.close()
-            .catch(() => { })
-            .finally(() => process.exit(0));
+        void (async () => {
+            if (viteDev)
+                await viteDev.close().catch(() => { });
+            await services.db.close().catch(() => { });
+            process.exit(0);
+        })();
     };
     process.on("SIGINT", () => shutdown("SIGINT"));
     process.on("SIGTERM", () => shutdown("SIGTERM"));

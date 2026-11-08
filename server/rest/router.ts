@@ -68,7 +68,7 @@ const resolveAuth = async (
   return user ? { user, token } : null;
 };
 
-/** Plain HTTP router for the game REST API (`/api/*`), served before Next.js. */
+/** Plain HTTP router for the game REST API (`/api/*`), served before the client UI. */
 export const createRestRouter =
   (ctx: RestContext) =>
   async (req: IncomingMessage, res: ServerResponse): Promise<void> => {

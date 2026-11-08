@@ -15,6 +15,9 @@ import {
 const MOSCOW_OFFSET_MS = 3 * 60 * 60 * 1000;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+/** Raw tournament stats row (column name depends on the category). */
+type StatRow = { userId: number; [key: string]: unknown };
+
 export class TournamentService {
   constructor(private readonly db: DbService) {}
 
@@ -172,10 +175,10 @@ export class TournamentService {
     const col = (COL_MAP as Record<TournamentCategory, string>)[category];
     const attr = (ATTR_MAP as Record<TournamentCategory, string>)[category];
     if (!col) return [];
-    const rows = await (this.db.PlayerTournamentStats as any).findAll({
+    const rows = (await this.db.PlayerTournamentStats.findAll({
       order: [[attr || col, "DESC"]],
       limit: Math.min(limit, 100),
-    });
+    })) as unknown as StatRow[];
     const userIds: number[] = Array.from(
       new Set(rows.map((r: { userId: number }) => r.userId))
     );
@@ -184,7 +187,7 @@ export class TournamentService {
         ? await this.db.User.findAll({ where: { id: { [Op.in]: userIds } }, attributes: ["id", "nickname"] })
         : [];
     const nickMap = new Map(users.map((u) => [u.id, u.nickname ?? null]));
-    return rows.map((r: any, i: number) => ({
+    return rows.map((r, i) => ({
       rank: i + 1,
       userId: r.userId,
       nickname: nickMap.get(r.userId) ?? null,
@@ -212,10 +215,10 @@ export class TournamentService {
     for (const cat of categories) {
       const col = (COL_MAP as Record<TournamentCategory, string>)[cat];
       const attr = (ATTR_MAP as Record<TournamentCategory, string>)[cat];
-      const rows = await (this.db.PlayerTournamentStats as any).findAll({
+      const rows = (await this.db.PlayerTournamentStats.findAll({
         order: [[attr || col, "DESC"]],
         limit: TOP_3,
-      });
+      })) as unknown as StatRow[];
       for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
         await this.db.TournamentWinner.create({

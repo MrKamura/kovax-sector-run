@@ -162,10 +162,10 @@ class TournamentService {
         const attr = tournament_constants_1.TOURNAMENT_CATEGORY_ATTR[category];
         if (!col)
             return [];
-        const rows = await this.db.PlayerTournamentStats.findAll({
+        const rows = (await this.db.PlayerTournamentStats.findAll({
             order: [[attr || col, "DESC"]],
             limit: Math.min(limit, 100),
-        });
+        }));
         const userIds = Array.from(new Set(rows.map((r) => r.userId)));
         const users = userIds.length > 0
             ? await this.db.User.findAll({ where: { id: { [sequelize_1.Op.in]: userIds } }, attributes: ["id", "nickname"] })
@@ -199,10 +199,10 @@ class TournamentService {
         for (const cat of categories) {
             const col = tournament_constants_1.TOURNAMENT_CATEGORY_COLUMN[cat];
             const attr = tournament_constants_1.TOURNAMENT_CATEGORY_ATTR[cat];
-            const rows = await this.db.PlayerTournamentStats.findAll({
+            const rows = (await this.db.PlayerTournamentStats.findAll({
                 order: [[attr || col, "DESC"]],
                 limit: tournament_constants_1.TOP_WINNERS_COUNT,
-            });
+            }));
             for (let i = 0; i < rows.length; i++) {
                 const r = rows[i];
                 await this.db.TournamentWinner.create({

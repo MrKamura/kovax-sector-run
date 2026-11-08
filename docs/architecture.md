@@ -3,25 +3,25 @@
 ## Layers
 
 ```
-Browser (Next UI + Phaser)
+Browser (React UI + Phaser)
     │  REST /api/*  (cookie session)
     │  WS /ws       (same-origin cookie)
     ▼
 server/bootstrap.ts
-    ├── Next.js request handler
+    ├── Client UI: Vite middleware (dev) / static client-dist (prod)
     ├── Game services (plain classes, server/container.ts)
     └── GameGateway → MessageHandler + tick loop
             ▼
         PostgreSQL (Sequelize)
 ```
 
-One Node process: HTTP (Next) + upgrade `/ws` → game WebSocket.
+One Node process: HTTP (REST + client UI) + upgrade `/ws` → game WebSocket.
 
 ## Repository layout
 
 | Path | Purpose |
 |------|---------|
-| `src/` | App Router, Zustand, Phaser, `lib` for API |
+| `src/` | React SPA (Vite), Zustand, Phaser, `lib` |
 | `server/game/` | Game services + models; wiring in `server/container.ts` |
 | `server/migrations/` | SQL 001…N, sorted by filename |
 | `server/bootstrap.ts` | Entry (dev: `tsx`) |
@@ -35,17 +35,18 @@ One Node process: HTTP (Next) + upgrade `/ws` → game WebSocket.
 
 1. `yarn run dev` → `tsx server/bootstrap.ts`
 2. dotenv: `.env.local`, then `.env`
-3. Next prepare
+3. Vite dev server (`vite.config.mts`, middleware mode — HMR WS through this server)
 4. `createGameServices()` — all game services built once, in dependency order (`server/container.ts`)
 5. `SectorService.loadSectorsFromDb`
-6. REST router (`server/rest/router.ts`) + HTTP server: `/api/*` → game REST, else Next
-7. `GameGateway.attachToServer` — `/ws` to game, else Next upgrade
-8. World tick every `TICK_INTERVAL_MS` (100 ms); SIGINT/SIGTERM → `DbService.close()`
+6. REST router (`server/rest/router.ts`) + HTTP server: `/api/*` → game REST, else client UI
+7. `GameGateway.attachToServer` — `/ws` to game, else Vite HMR upgrade
+8. World tick every `TICK_INTERVAL_MS` (100 ms); SIGINT/SIGTERM → Vite close + `DbService.close()`
 9. Listen `PORT` (local often 3000; Docker 4000)
 
 ## Boot (prod Docker)
 
 - Entrypoint: `docker-entrypoint.sh` → migrate → `node server/bootstrap-loader.js`
+- Serves: static `client-dist/` (built by `vite build`, SPA fallback, `server/static.ts`) + `/api/*` + `/ws`
 - Compose: Postgres 16 + app; prod: `docker-compose.prod.yml`, image `ghcr.io/mrkamura/kovax-game-app:latest`
 - Details: `.github/DEPLOY.md`
 
@@ -56,14 +57,14 @@ One Node process: HTTP (Next) + upgrade `/ws` → game WebSocket.
 3. WS: cookie on upgrade → `DbService.resolveUser`
 4. Gate: nickname → ship → in-game
 
-The REST API (`/api/*`) is served by the game process itself (`server/rest/`) — the same `DbService`/models as the game, intercepted before Next in `bootstrap.ts`. Next only serves the UI.
+The REST API (`/api/*`) is served by the game process itself (`server/rest/`) — the same `DbService`/models as the game, intercepted before the UI handler in `bootstrap.ts`.
 
 ## Key constants
 
 | File | Contents |
 |------|----------|
 | `server/game/config/constants.ts` | World, enemies, black holes, safe zone, death penalty, tick, spawn immunity |
-| `src/app/constants.ts` | Intro, tutorial, splash |
+| `src/constants.ts` | Intro, tutorial, splash |
 | `src/components/PhaserArena/constants.ts` | Client spawn-immunity sentinel |
 | `server/game/shared/skills.ts`, `mutation.ts`, `gameDefaults.ts`, `recipes.ts` | Skills, mutations, defaults, crafting — shared client/server |
 | `src/lib/gameBranding.ts` | Branding |

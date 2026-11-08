@@ -1,6 +1,6 @@
 # Kovax: Sector Run — documentation
 
-Browser online RPG (keepers, sectors, PvP/PvE). Stack: **Next.js + Phaser + PostgreSQL/Sequelize**, one HTTP process, WebSocket on `/ws`. Game services — plain TypeScript classes wired in `server/container.ts` (no DI framework).
+Browser online RPG (keepers, sectors, PvP/PvE). Stack: **React (Vite) + Phaser + PostgreSQL/Sequelize**, one HTTP process, WebSocket on `/ws`. Game services — plain TypeScript classes wired in `server/container.ts` (no DI framework).
 
 ## For AI agents
 

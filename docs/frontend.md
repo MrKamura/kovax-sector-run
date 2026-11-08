@@ -1,15 +1,22 @@
 # Frontend
 
+## Build / dev
+
+- Entry: `index.html` → `src/main.tsx` (React `createRoot`), config: `vite.config.mts`
+- **Dev:** the game server hosts Vite as middleware (same port as REST/WS, HMR enabled — the `vite-hmr` WebSocket is upgraded by Vite's listener on the game server)
+- **Build:** `yarn build` = `vite build` (→ `client-dist/`) + `tsc -p server/tsconfig.json` (→ `server/dist/`)
+- **Prod:** `server/static.ts` serves `client-dist/` (SPA fallback to `index.html`; hashed `/assets/*` immutable, `index.html` no-cache)
+
 ## Orchestration
 
-`src/app/page.tsx`:
+`src/App.tsx`:
 
 1. Auth (`AuthScreen`)
 2. Nickname
 3. Splash → Intro story → Ship select (if needed)
 4. Game: `SpaceArena` + HUD (quests, chat, player panel, menu, overlays)
 
-Styles: `src/app/page.module.css`. UI constants: `src/app/constants.ts`.
+Styles: `src/page.module.css`. UI constants: `src/constants.ts`.
 
 ## State
 
@@ -36,11 +43,11 @@ REST calls go to `/api/*` (served by the game process, `server/rest/`).
 
 Global WS for UI buttons: `getGlobalSocket` / `setGlobalSocket` in `QuestButton.tsx`.
 
-## UI components (`src/app/components/`)
+## UI components (`src/components/`)
 
 PlayerPanel, QuestPanel, QuestButton, ChatPanel, SettingsMenu, TournamentButton, MutationButton, Death/LevelUp/Exit/QuestComplete overlays, TutorialOverlay, Splash, IntroStory, Nickname/ShipSelect screens.
 
-Hooks: `src/app/hooks/` — `useChat`, `useSplash`, `useIntroStory`, `useTutorial`, skill hotkeys, cooldown.
+Hooks: `src/hooks/` — `useChat`, `useSplash`, `useIntroStory`, `useTutorial`, skill hotkeys, cooldown.
 
 ## Tutorial
 
@@ -53,7 +60,7 @@ After all hints: WS `tutorial_complete` + UI “newbie shield”.
 
 ## REST API (served by the game process)
 
-`/api/*` is handled by `server/rest/` (intercepted before Next in `bootstrap.ts`); the client just fetches relative URLs. Endpoints: `auth/*` (login, register, logout, me, change-password), `player` (GET), `collect`, `consume-energy`, `craft`, `damage-player`, `mutation` (GET/POST), `skills` (POST/PUT), `upgrade-shelter`, `user/nickname|ship|settings`. Details: [server.md](./server.md#rest-api-serverrest).
+`/api/*` is handled by `server/rest/` (intercepted before the UI handler in `bootstrap.ts`); the client just fetches relative URLs. Endpoints: `auth/*` (login, register, logout, me, change-password), `player` (GET), `collect`, `consume-energy`, `craft`, `damage-player`, `mutation` (GET/POST), `skills` (POST/PUT), `upgrade-shelter`, `user/nickname|ship|settings`. Details: [server.md](./server.md#rest-api-serverrest).
 
 ## lib (`src/lib/`)
 

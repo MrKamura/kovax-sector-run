@@ -3,7 +3,7 @@
 ## Must
 
 1. **Yarn** (`yarn.lock`, Dockerfile Corepack). Do not add `package-lock.json`.
-2. Gameplay only via **bootstrap** (Next + Nest + WS).
+2. Gameplay only via **bootstrap** (UI + REST + WS in one process).
 3. New level-1 players → sector **`L1-01`**, not `findOrCreateSector(1)` (that picks any grade by load).
 4. Commits only when the user explicitly asks.
 5. Do not commit `.env` or secrets.
@@ -17,7 +17,7 @@ On any meaningful code change, in the same work session:
 2. Add a bullet under `CHANGELOG.md` → `## [Unreleased]` (Added / Changed / Fixed / Removed).
 3. When the user asks for a release: bump `package.json` `version`, move Unreleased notes into a new `## [X.Y.Z] — YYYY-MM-DD` section, clear Unreleased (or leave Planned).
 
-Current version: see `package.json` (`0.6.1` at time of this docs pass).
+Current version: see `package.json` (`0.6.2` at time of this docs pass).
 
 ## DI
 

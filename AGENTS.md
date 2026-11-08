@@ -13,7 +13,7 @@ Before exploring code, open **`docs/`**. Do not walk the whole repo if these fil
 ## Hard project rules
 
 - **Yarn**, not npm.
-- Game and `/ws` live in **one process** (`server/bootstrap.ts`). Do not run “Next only” for gameplay.
+- Game, `/ws`, REST and the UI live in **one process** (`server/bootstrap.ts`). Do not run the UI separately from the game server.
 - New level-1 players → sector **`L1-01`** (white).
 - Migrations are idempotent; the runner does **not** track applied history.
 - Do not commit secrets (`.env.local`).
@@ -28,5 +28,5 @@ Before exploring code, open **`docs/`**. Do not walk the whole repo if these fil
 | Balance / tick | `server/game/config/constants.ts`, `world-tick.service.ts` |
 | Client socket | `src/components/PhaserArena.tsx`, `PhaserArena/socketSchemas.ts` |
 | UI state | `src/store/gameStore.ts` |
-| REST API | `server/rest/` (served by the game process before Next) |
-| Screen orchestration | `src/app/page.tsx` |
+| REST API | `server/rest/` (served by the game process) |
+| Screen orchestration | `src/App.tsx` |

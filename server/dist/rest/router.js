@@ -35,7 +35,7 @@ const resolveAuth = async (ctx, req) => {
     const user = await (0, auth_1.getUserFromSession)(ctx.db, token);
     return user ? { user, token } : null;
 };
-/** Plain HTTP router for the game REST API (`/api/*`), served before Next.js. */
+/** Plain HTTP router for the game REST API (`/api/*`), served before the client UI. */
 const createRestRouter = (ctx) => async (req, res) => {
     const path = (req.url ?? "/").split("?")[0];
     const method = (req.method ?? "GET").toUpperCase();
