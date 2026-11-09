@@ -30,3 +30,5 @@ Before exploring code, open **`docs/`**. Do not walk the whole repo if these fil
 | UI state | `src/store/gameStore.ts` |
 | REST API | `server/rest/` (served by the game process) |
 | Screen orchestration | `src/App.tsx` |
+| **Native UI** | **`src/components/nativeX/`** (new!) |
+| **Native Core** | **`src/native/`** (new!) |

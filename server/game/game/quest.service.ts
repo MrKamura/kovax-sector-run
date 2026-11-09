@@ -169,7 +169,6 @@ export class QuestService {
   async getOrCreateQuest(userId: number, sectorId: string): Promise<QuestProgress | null> {
     try {
       const now = new Date();
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       
       // Для тестов: всегда создаем новый квест (бесконечное выполнение)
       // В продакшене нужно раскомментировать проверку на существующий квест
@@ -346,7 +345,7 @@ export class QuestService {
   /**
    * Завершить квест и выдать награду
    */
-  async completeQuest(questId: number, userId: number, sectorId: string, shipChoice?: string | null): Promise<{ exp?: number; tokens?: number } | null> {
+  async completeQuest(questId: number, userId: number, sectorId: string, _shipChoice?: string | null): Promise<{ exp?: number; tokens?: number } | null> {
     try {
       if (!this.db || !this.db.DailyQuest) {
         console.error("QuestService: db or db.DailyQuest is undefined in completeQuest");

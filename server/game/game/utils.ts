@@ -6,7 +6,6 @@ import {
   ENEMY_HEALTH,
   BASE_ENEMY_DAMAGE,
   BASE_ENERGY_CAP,
-  ENERGY_CAP_PER_LEVEL,
   SECTOR_CONFIGS,
   SECTOR_NAMES,
 } from "../config/constants";

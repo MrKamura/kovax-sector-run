@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import styles from "./page.module.css";
-import { useGameStore } from "@/store/gameStore";
+import { useGameStore, gameStore } from "@/store/gameStore";
 import SpaceArena from "@/components/SpaceArena";
 import { SKILL_SLOT_COUNT } from "../server/game/shared/skills";
 import { AuthScreen } from "@/components/home/AuthScreen";
@@ -316,7 +316,7 @@ export default function Home() {
               <QuestCompleteOverlay
                 rewardExp={questCompleteReward.exp}
                 rewardTokens={questCompleteReward.tokens}
-                onClose={() => useGameStore.getState().setQuestCompleteReward(null)}
+                onClose={() => gameStore.getState().setQuestCompleteReward(null)}
               />
             )}
 
@@ -366,7 +366,7 @@ export default function Home() {
                 onContinue={() => setMenuOpen(false)}
                 onExitGame={requestExitGame}
                 onExitAndLogout={() => {
-                  useGameStore.getState().setExitThenLogout(true);
+                  gameStore.getState().setExitThenLogout(true);
                   requestExitGame();
                 }}
                 shipChangeLoading={monsterSaving}
@@ -425,3 +425,4 @@ export default function Home() {
     </div>
   );
 }
+

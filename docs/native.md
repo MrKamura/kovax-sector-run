@@ -1,0 +1,98 @@
+﻿# Native UI Components
+
+## Overview
+
+The game uses **NativeX** - a custom native JS UI library for gradual migration from React.
+
+## Structure
+
+```
+src/
+в”њв”Ђв”Ђ components/
+в”‚   в””в”Ђв”Ђ nativeX/           # Native UI components
+в”‚       в”њв”Ђв”Ђ Component.ts   # Base class
+в”‚       в”њв”Ђв”Ђ Button.ts
+в”‚       в”њв”Ђв”Ђ Input.ts
+в”‚       в”њв”Ђв”Ђ Card.ts
+в”‚       в”њв”Ђв”Ђ AuthScreen.ts
+в”‚       в”њв”Ђв”Ђ index.ts
+в”‚       в””в”Ђв”Ђ nativeX.config.ts
+в””в”Ђв”Ђ native/                # Core native modules
+    в”њв”Ђв”Ђ ScreenManager.ts
+    в”њв”Ђв”Ђ EventEmitter.ts
+    в”њв”Ђв”Ђ main.ts           # Example app entry
+    в””в”Ђв”Ђ index.ts
+```
+
+## Usage
+
+```typescript
+import { AuthScreen, AuthScreenEvents } from '@/components/nativeX';
+
+const authScreen = new AuthScreen(document.body, {
+  onLogin: async (email, password) => { /* ... */ },
+  onRegister: async (email, password) => { /* ... */ },
+});
+
+authScreen.init();
+authScreen.on(AuthScreenEvents.LOGIN, (e) => { /* ... */ });
+```
+
+## Architecture
+
+### Component Base Class
+
+All components extend `Component`:
+
+- `createRootElement()` вЂ” create DOM element
+- `render()` вЂ” render state
+- `attachEventListeners()` / `detachEventListeners()` вЂ” event handling
+- `show()` / `hide()` / `isVisible()` вЂ” visibility
+- `destroy()` вЂ” cleanup
+
+### EventEmitter
+
+For inter-component communication:
+
+```typescript
+const emitter = new EventEmitter();
+emitter.on('event', handler);
+emitter.emit('event', data);
+```
+
+### ScreenManager
+
+Manages screen transitions:
+
+```typescript
+const manager = new ScreenManager(container);
+manager.addScreen('login', loginScreen);
+manager.showScreen('login');
+```
+
+## Migration from React
+
+| React | NativeX |
+|-------|---------|
+| `useState()` | Instance properties |
+| `useEffect()` | `attachEventListeners()` |
+| `props` | Constructor options |
+| `children` | DOM manipulation |
+| Context | `EventEmitter` |
+
+## CSS Conventions
+
+- Class prefix: `native-` (configurable)
+- Use `nativeX.config.ts` for global settings
+
+## Best Practices
+
+1. Call `init()` after constructor
+2. Call `destroy()` for cleanup
+3. Use `EventEmitter` for events
+4. Keep DOM access minimal
+5. Use `nativeX/` prefix for CSS classes
+
+## Planned Components`r`n`r`n- PlayerPanel - Main player UI with skills`r`n- QuestPanel - Quest tracking`r`n- ChatPanel - In-game chat`r`n- SettingsMenu - Game settings`r`n`r`nNote: PlayerPanel is temporarily disabled due to encoding issues during migration.`r`n`r`n## Examples
+
+See `src/native/main.ts` for full app example.

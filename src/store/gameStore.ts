@@ -1,5 +1,5 @@
-import { create } from "zustand";
-import { immer } from "zustand/middleware/immer";
+import { useEffect, useSyncExternalStore, useState } from "react";
+import { createStore, type Store } from "./store";
 import { getSkillDef } from "../../server/game/shared/skills";
 import {
   getEffectiveEnergyCost,
@@ -295,8 +295,10 @@ const scheduleSaveAudioSettings = (next: {
   }, 350);
 };
 
-export const useGameStore = create<GameStore>()(
-  immer((set) => ({
+export const gameStore: Store<GameStore> = (() => {
+  const store = createStore<GameStore>({} as GameStore);
+  const set: typeof store.setState = store.setState;
+  const initial: GameStore = {
   player: null,
   // IMPORTANT: don't read localStorage during initial render (SSR hydration mismatch).
   // We'll load the cached user inside `loadSession()` (runs on the client).
@@ -680,8 +682,7 @@ export const useGameStore = create<GameStore>()(
     }
   },
   triggerSkillSlot: async (slotIndex) => {
-    const { getState } = useGameStore;
-    const state = getState();
+    const state = gameStore.getState();
     const baseSkills = (state.player?.skills ?? []).slice(0, 9);
     const skillId = baseSkills[slotIndex];
     if (!skillId) {
@@ -777,5 +778,21 @@ export const useGameStore = create<GameStore>()(
       state.sfxVolume = Math.max(0, Math.min(1, Number(value) || 0));
       scheduleSaveAudioSettings({ sfxVolume: state.sfxVolume });
     }),
-  }))
-);
+  };
+  store.setState(initial);
+  return store;
+})();
+
+// React hook for Zustand-like usage - using useState for simplicity
+export function useGameStore<T>(selector: (state: GameStore) => T): T {
+  const [state, setState] = useState<GameStore>(gameStore.getState());
+  
+  useEffect(() => {
+    const unsubscribe = gameStore.subscribe((newState: GameStore) => {
+      setState(newState);
+    });
+    return () => unsubscribe();
+  }, []);
+  
+  return selector(state);
+}

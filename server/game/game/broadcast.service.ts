@@ -166,7 +166,6 @@ export class BroadcastService {
     const sec = sectorServiceOverride ?? this.sectorService;
     const targetEntry = pres?.getEntry(targetUserId);
     if (!targetEntry?.sectorId || !pres?.presence) return;
-    const targetSector = sec?.sectors?.get(targetEntry.sectorId);
     const now = Date.now();
     for (const entry of pres.presence.values()) {
       if (

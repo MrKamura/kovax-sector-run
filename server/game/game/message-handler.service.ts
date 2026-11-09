@@ -36,7 +36,6 @@ import {
   PVP_DEATH_PENALTY_PERCENT_BY_GRADE,
   PVP_DEATH_PENALTY_EXTRA_MULT,
 } from "../config/constants";
-import type { Sector } from "./types";
 
 export interface HandlerServices {
   presence: PresenceService;
@@ -253,7 +252,6 @@ export class MessageHandlerService {
       const stored = getMonsterProgressEntry(progress, monsterKey) || {};
       const exp = Number(stored.exp ?? playerRow.exp ?? 0) || 0;
       const level = Number(stored.level ?? 1) || 1;
-      const expToNext = Number.isFinite(Number(stored.expToNext)) ? Number(stored.expToNext) : expToNextLevel(level);
 
       const percent = Math.max(0, Math.min(100, penaltyPercent)) / 100;
       let lostExp = Math.floor(exp * percent);
@@ -1742,7 +1740,7 @@ export class MessageHandlerService {
         }
       }
       
-      const cancelled = await services.quest.cancelQuest(user.id, presenceEntry.sectorId, questType);
+      await services.quest.cancelQuest(user.id, presenceEntry.sectorId, questType);
       
       // Убираем флаг hasPvpQuest если был активный PvP квест и он был отменен
       if (questType === "pvp_kills" && hasPvpQuest && presenceEntry.hasPvpQuest) {

@@ -1,4 +1,4 @@
-import { useGameStore } from "@/store/gameStore";
+import { gameStore } from "@/store/gameStore";
 import {
   MOVE_SPEED,
   WORLD_WIDTH,
@@ -326,8 +326,8 @@ const createSpaceArenaScene = (
         .setOrigin(0.5, 1);
       this.healthBar = this.add.graphics().setDepth(10);
       this.updateHealthBar();
-      const user = useGameStore.getState().user;
-      const initialLevel = useGameStore.getState().player?.level ?? 1;
+      const user = gameStore.getState().user;
+      const initialLevel = gameStore.getState().player?.level ?? 1;
       this.playerNameText = this.add
         .text(0, 0, this.formatPilotName(user?.nickname ?? "", initialLevel), {
           fontFamily: "Arial",
@@ -345,7 +345,7 @@ const createSpaceArenaScene = (
 
       this.asteroids = this.physics.add.staticGroup();
 
-      const playerState = useGameStore.getState().player;
+      const playerState = gameStore.getState().player;
       const spawnFromServer = !!playerState?.lastPositionAt;
       const spawnX = spawnFromServer ? playerState.posX : centerX;
       const spawnY = spawnFromServer ? playerState.posY : centerY;
@@ -356,16 +356,16 @@ const createSpaceArenaScene = (
         .sprite(spawnX, spawnY, shipTexture)
         .setScale(
           getShipScale(user?.shipChoice) *
-            getLevelScale(useGameStore.getState().player?.level ?? 1)
+            getLevelScale(gameStore.getState().player?.level ?? 1)
         )
         .setCollideWorldBounds(true);
       // Spawn immunity: invulnerable until first movement (prevents mobs killing on login).
       this.invulnerableUntil = SPAWN_IMMUNITY_UNTIL_FIRST_ACTION;
       this.playerSpeedMultiplier =
         getShipSpeedMultiplier(user?.shipChoice) *
-        getLevelSpeedMultiplier(useGameStore.getState().player?.level ?? 1);
+        getLevelSpeedMultiplier(gameStore.getState().player?.level ?? 1);
       this.appliedLevelScale = getLevelScale(
-        useGameStore.getState().player?.level ?? 1
+        gameStore.getState().player?.level ?? 1
       );
       this.aimRotation = spawnRotation;
       this.player.setRotation(
@@ -421,7 +421,7 @@ const createSpaceArenaScene = (
       this.enemies = this.physics.add.group();
       this.otherPlayersGroup = this.physics.add.group();
       this.audioManager = createAudioManager({
-        getState: (): AudioManagerState => useGameStore.getState(),
+        getState: (): AudioManagerState => gameStore.getState(),
         getCurrentSectorLevel: () => this.currentSectorLevel,
         setCurrentSectorLevel: (level) => {
           this.currentSectorLevel = level;
@@ -437,10 +437,10 @@ const createSpaceArenaScene = (
       this.events.once("shutdown", this.clearPresence, this);
       this.events.once("destroy", this.clearPresence, this);
 
-      this.unsubscribeMusicVolume = useGameStore.subscribe((state) => {
+      this.unsubscribeMusicVolume = gameStore.subscribe((state) => {
         this.audioManager.updateVolumes(state);
       });
-      this.unsubscribeShipChoice = useGameStore.subscribe((state, prev) => {
+      this.unsubscribeShipChoice = gameStore.subscribe((state, prev) => {
         const prevChoice = prev?.user?.shipChoice;
         const nextChoice = state.user?.shipChoice;
         if (nextChoice && nextChoice !== prevChoice) {
@@ -521,7 +521,7 @@ const createSpaceArenaScene = (
         const enemySprite = enemy as Phaser.Physics.Arcade.Sprite;
         const enemyId = enemySprite.getData("id") as number | undefined;
         if (enemyId != null) {
-          const damage = useGameStore.getState().player?.damage ?? 18;
+          const damage = gameStore.getState().player?.damage ?? 18;
           this.sendWorldAction("enemy_hit", { enemyId, damage });
         }
         this.audioManager.playEnemyHitSound();
@@ -539,7 +539,7 @@ const createSpaceArenaScene = (
             | number
             | undefined;
           if (targetUserId != null) {
-            const damage = useGameStore.getState().player?.damage ?? 12;
+            const damage = gameStore.getState().player?.damage ?? 12;
             this.sendWorldAction("player_hit", { targetUserId, damage });
           }
           this.audioManager.playEnemyHitSound();
@@ -609,7 +609,7 @@ const createSpaceArenaScene = (
       }
       this.lastDamageAt = now;
       // Fury (rage) mode: cannot die, health floors at 1
-      const furyEffect = useGameStore.getState().activeSkillEffect;
+      const furyEffect = gameStore.getState().activeSkillEffect;
       const furyActive =
         furyEffect?.skillId === "fury_7s" &&
         (furyEffect?.expiresAt ?? 0) > Date.now();
@@ -733,7 +733,7 @@ const createSpaceArenaScene = (
       const level = (enemy.getData("level") as number | undefined) ?? 1;
       const textureKey = enemy.texture.key;
       const displayName = MONSTER_DEFS[textureKey]?.name ?? "Monster";
-      const playerLevel = useGameStore.getState().player?.level ?? 1;
+      const playerLevel = gameStore.getState().player?.level ?? 1;
       nameText.setText(`${displayName} Lv.${level}`);
       nameText.setColor(monsterNameColor(level, playerLevel));
       nameText.setPosition(enemy.x, enemy.y - enemy.displayHeight * 0.6 - 22);
@@ -758,7 +758,7 @@ const createSpaceArenaScene = (
       if (!sector) {
         return;
       }
-      useGameStore.getState().setCurrentSectorPvpAllowed(sector.pvpAllowed ?? false);
+      gameStore.getState().setCurrentSectorPvpAllowed(sector.pvpAllowed ?? false);
       const level = Math.max(1, Math.min(5, sector.level ?? 1));
       const grade = Math.max(1, Math.min(5, sector.grade ?? level));
       this.audioManager.switchMainMusicToSectorLevel(grade);
@@ -810,13 +810,13 @@ const createSpaceArenaScene = (
         );
         // Очищаем все квесты при смене сектора (сервер отправит новые через quest_progress)
         console.log("[Sector] Clearing all quests for sector change");
-        useGameStore.getState().setCurrentSectorQuestInfo(null);
-        useGameStore.getState().setActiveQuests([]);
-        useGameStore.getState().setDailyQuest(null);
-        useGameStore.getState().setCurrentSectorPvpAllowed(false); // будет установлено при следующем world sync
+        gameStore.getState().setCurrentSectorQuestInfo(null);
+        gameStore.getState().setActiveQuests([]);
+        gameStore.getState().setDailyQuest(null);
+        gameStore.getState().setCurrentSectorPvpAllowed(false); // будет установлено при следующем world sync
       }
       this.currentSectorId = sector.id;
-      useGameStore.getState().setCurrentSectorId(sector.id);
+      gameStore.getState().setCurrentSectorId(sector.id);
     }
 
     private applyPlayerMonsterChoice(choice: string | null | undefined) {
@@ -827,7 +827,7 @@ const createSpaceArenaScene = (
       if (this.player.texture.key !== texture) {
         this.player.setTexture(texture);
       }
-      const level = useGameStore.getState().player?.level ?? 1;
+      const level = gameStore.getState().player?.level ?? 1;
       const levelScale = getLevelScale(level);
       this.player.setScale(getShipScale(choice) * levelScale);
       this.appliedLevelScale = levelScale;
@@ -911,22 +911,22 @@ const createSpaceArenaScene = (
         case "self": {
           this.invulnerableUntil = Number(msg.invulnerableUntil ?? 0);
           if (msg.vengeance !== undefined) {
-            useGameStore.getState().setVengeance(msg.vengeance);
+            gameStore.getState().setVengeance(msg.vengeance);
           }
           if (msg.hunted !== undefined) {
-            useGameStore.getState().setHunted(msg.hunted);
+            gameStore.getState().setHunted(msg.hunted);
           }
           const posX = msg.posX;
           const posY = msg.posY;
           if (posX != null && posY != null && this.player) {
             this.player.setPosition(posX, posY);
             this.appliedServerPosition = true;
-            useGameStore.getState().applyPlayerUpdate({ posX, posY });
+            gameStore.getState().applyPlayerUpdate({ posX, posY });
           }
           break;
         }
         case "death":
-          useGameStore.getState().setDeathInfo(msg.death);
+          gameStore.getState().setDeathInfo(msg.death);
           break;
         case "player_update": {
           const player = msg.player;
@@ -939,8 +939,8 @@ const createSpaceArenaScene = (
           if (typeof player.maxHealth === "number") {
             this.maxHealth = player.maxHealth;
           }
-          useGameStore.getState().applyPlayerUpdate(player);
-          const celebration = useGameStore.getState().levelUpCelebration;
+          gameStore.getState().applyPlayerUpdate(player);
+          const celebration = gameStore.getState().levelUpCelebration;
           if (celebration) {
             this.triggerLevelUpEffects(celebration);
           }
@@ -952,7 +952,7 @@ const createSpaceArenaScene = (
           if (this.player && Number.isFinite(x) && Number.isFinite(y)) {
             const oldX = this.player.x;
             const oldY = this.player.y;
-            useGameStore.getState().setActiveSkillEffect(null);
+            gameStore.getState().setActiveSkillEffect(null);
             this.playTeleportOutEffect(oldX, oldY);
             this.player.x = x;
             this.player.y = y;
@@ -961,7 +961,7 @@ const createSpaceArenaScene = (
           break;
         }
         case "exit_ready": {
-          const store = useGameStore.getState();
+          const store = gameStore.getState();
           store.clearExitCountdown();
           this.clearPresence();
           if (store.exitThenLogout) {
@@ -973,16 +973,16 @@ const createSpaceArenaScene = (
         case "sector_kill_flash": {
           const killerName = String(msg.killerName ?? "").trim() || "Пилот";
           const victimName = String(msg.victimName ?? "").trim() || "Пилот";
-          useGameStore
+          gameStore
             .getState()
             .setSectorKillFlash({ killerName, victimName });
           this.time.delayedCall(2000, () => {
-            useGameStore.getState().setSectorKillFlash(null);
+            gameStore.getState().setSectorKillFlash(null);
           });
           break;
         }
         case "player_shot_result": {
-          const myUserId = useGameStore.getState().user?.id ?? null;
+          const myUserId = gameStore.getState().user?.id ?? null;
           const victimUserId = msg.victimUserId ?? NaN;
           const attackerUserId = msg.attackerUserId ?? NaN;
           const attackerX = msg.attackerX ?? NaN;
@@ -1023,11 +1023,11 @@ const createSpaceArenaScene = (
           if (quest && quest.completedAt != null && quest.completedAt !== 0) {
             const exp = typeof quest.rewardExp === "number" ? quest.rewardExp : 0;
             const tokens = typeof quest.rewardTokens === "number" ? quest.rewardTokens : 0;
-            useGameStore.getState().setQuestCompleteReward({ exp, tokens });
+            gameStore.getState().setQuestCompleteReward({ exp, tokens });
           }
 
           // Если есть информация о секторе (даже когда quest: null), сохраняем её только для текущего сектора
-          const currentSectorId = useGameStore.getState().currentSectorId;
+          const currentSectorId = gameStore.getState().currentSectorId;
           const isForCurrentSector = currentSectorId === null || currentSectorId === msg.sectorId;
           if (msg.sectorId && msg.sectorName !== undefined && isForCurrentSector) {
             // available должен быть true если квест не выполнен (completedAt === null)
@@ -1082,7 +1082,7 @@ const createSpaceArenaScene = (
             } else {
               // Не перезаписываем questInfo пустым: сохраняем предыдущее состояние для этого сектора,
               // чтобы выполненный квест оставался перечёркнутым (completedAt не терялся)
-              const prev = useGameStore.getState().currentSectorQuestInfo;
+              const prev = gameStore.getState().currentSectorQuestInfo;
               if (prev?.sectorId === msg.sectorId && prev.questInfo) {
                 sectorQuestInfo.questInfo = prev.questInfo;
               }
@@ -1096,7 +1096,7 @@ const createSpaceArenaScene = (
                 completedAt: msg.completedAt,
               }
             );
-            useGameStore.getState().setCurrentSectorQuestInfo(sectorQuestInfo);
+            gameStore.getState().setCurrentSectorQuestInfo(sectorQuestInfo);
           } else if (!isForCurrentSector && msg.sectorId) {
             // Игнорируем quest_progress для другого сектора (чтобы в жёлтом не показывать «выполнено» из зелёного)
             console.log("[Socket] Ignoring quest_progress for other sector:", msg.sectorId, "current:", currentSectorId);
@@ -1104,7 +1104,7 @@ const createSpaceArenaScene = (
             // Если нет информации о секторе, но есть quest, используем его sectorId (только для текущего сектора)
             // Сохраняем prev.questInfo, чтобы выполненный mob-квест не сбрасывался при взятии PvP-квеста
             if (quest && quest.sectorId && quest.sectorName && (currentSectorId === null || currentSectorId === quest.sectorId)) {
-              const prev = useGameStore.getState().currentSectorQuestInfo;
+              const prev = gameStore.getState().currentSectorQuestInfo;
               const sectorQuestInfo: {
                 sectorId: string;
                 sectorName: string;
@@ -1139,7 +1139,7 @@ const createSpaceArenaScene = (
                 "[Socket] Setting currentSectorQuestInfo from quest:",
                 sectorQuestInfo
               );
-              useGameStore
+              gameStore
                 .getState()
                 .setCurrentSectorQuestInfo(sectorQuestInfo);
             }
@@ -1173,13 +1173,13 @@ const createSpaceArenaScene = (
               "[Socket] Setting questAvailable from sector info:",
               sectorAvailable
             );
-            useGameStore.getState().setQuestAvailable(sectorAvailable);
+            gameStore.getState().setQuestAvailable(sectorAvailable);
           } else {
             console.log(
               "[Socket] Setting questAvailable:",
               questAvailableValue
             );
-            useGameStore.getState().setQuestAvailable(questAvailableValue);
+            gameStore.getState().setQuestAvailable(questAvailableValue);
           }
 
           // Если есть активный квест (и он не завершён), добавляем его в список активных квестов
@@ -1211,7 +1211,7 @@ const createSpaceArenaScene = (
               };
 
               // Добавляем квест в список активных квестов
-              const currentQuests = useGameStore.getState().activeQuests;
+              const currentQuests = gameStore.getState().activeQuests;
               const existingIndex = currentQuests.findIndex(
                 (q) => q && q.id === normalizedQuest.id
               );
@@ -1220,23 +1220,23 @@ const createSpaceArenaScene = (
                 // Обновляем существующий квест
                 const updatedQuests = [...currentQuests];
                 updatedQuests[existingIndex] = normalizedQuest;
-                useGameStore.getState().setActiveQuests(updatedQuests);
+                gameStore.getState().setActiveQuests(updatedQuests);
               } else {
                 // Добавляем новый квест
-                useGameStore
+                gameStore
                   .getState()
                   .setActiveQuests([...currentQuests, normalizedQuest]);
               }
 
               // Для обратной совместимости сохраняем первый квест в dailyQuest
-              const allQuests = useGameStore.getState().activeQuests;
-              useGameStore
+              const allQuests = gameStore.getState().activeQuests;
+              gameStore
                 .getState()
                 .setDailyQuest(allQuests.length > 0 ? allQuests[0] : null);
             }
           } else {
             // quest: null — обновление состояния сектора (например, после отмены квеста)
-            const currentQuests = useGameStore.getState().activeQuests;
+            const currentQuests = gameStore.getState().activeQuests;
             console.log("[Socket] quest_progress with quest=null, msg:", {
               sectorId: msg.sectorId,
               hasQuestInfo: "questInfo" in msg,
@@ -1274,8 +1274,8 @@ const createSpaceArenaScene = (
                   (q) => !q || q.sectorId !== msg.sectorId
                 );
                 const newQuests = [...otherSectorQuests, ...normalized];
-                useGameStore.getState().setActiveQuests(newQuests);
-                useGameStore
+                gameStore.getState().setActiveQuests(newQuests);
+                gameStore
                   .getState()
                   .setDailyQuest(newQuests.length > 0 ? newQuests[0] : null);
               } else if ("questInfo" in msg && msg.questInfo && typeof msg.questInfo === "object") {
@@ -1283,8 +1283,8 @@ const createSpaceArenaScene = (
                 const filteredQuests = currentQuests.filter(
                   (q) => !q || q.sectorId !== msg.sectorId
                 );
-                useGameStore.getState().setActiveQuests(filteredQuests);
-                useGameStore
+                gameStore.getState().setActiveQuests(filteredQuests);
+                gameStore
                   .getState()
                   .setDailyQuest(
                     filteredQuests.length > 0 ? filteredQuests[0] : null
@@ -1293,20 +1293,20 @@ const createSpaceArenaScene = (
                 const filteredQuests = currentQuests.filter(
                   (q) => q && q.sectorId === msg.sectorId
                 );
-                useGameStore.getState().setActiveQuests(filteredQuests);
-                useGameStore
+                gameStore.getState().setActiveQuests(filteredQuests);
+                gameStore
                   .getState()
                   .setDailyQuest(
                     filteredQuests.length > 0 ? filteredQuests[0] : null
                   );
               }
             } else {
-              useGameStore.getState().setActiveQuests([]);
-              useGameStore.getState().setDailyQuest(null);
+              gameStore.getState().setActiveQuests([]);
+              gameStore.getState().setDailyQuest(null);
             }
           }
 
-          const updatedQuest = useGameStore.getState().dailyQuest;
+          const updatedQuest = gameStore.getState().dailyQuest;
           console.log("[Socket] dailyQuest after set:", updatedQuest);
           break;
         }
@@ -1335,8 +1335,8 @@ const createSpaceArenaScene = (
           rotation: this.aimRotation,
           health: this.health,
           maxHealth: this.maxHealth,
-          level: useGameStore.getState().player?.level ?? 1,
-          shipChoice: useGameStore.getState().user?.shipChoice ?? null,
+          level: gameStore.getState().player?.level ?? 1,
+          shipChoice: gameStore.getState().user?.shipChoice ?? null,
           firingAt: justFired ? this.lastFiringAt : null,
         })
       );
@@ -1349,7 +1349,7 @@ const createSpaceArenaScene = (
       this.serverTimeOffset = offset;
     }
     private getSelfId(): number | undefined {
-      return useGameStore.getState().user?.id;
+      return gameStore.getState().user?.id;
     }
     private linear(a: number, b: number, t: number): number {
       return Phaser.Math.Linear(a, b, t);
@@ -1442,7 +1442,7 @@ const createSpaceArenaScene = (
         ? formatSectorDisplayName(bh.targetSectorName)
         : "неизвестный сектор";
       const targetTitle = bh.targetTitle ? `, ${bh.targetTitle}` : "";
-      const playerLevel = useGameStore.getState().player?.level ?? 1;
+      const playerLevel = gameStore.getState().player?.level ?? 1;
       const targetLevel = Math.max(1, Math.min(5, bh.targetLevel ?? 1));
       const requiredLevel = bh.targetRequiredPlayerLevel ?? 1;
       const accessOpen = playerLevel >= requiredLevel;
@@ -1595,7 +1595,7 @@ const createSpaceArenaScene = (
         this.lowHealthBarPulseTween = undefined;
       }
       this.audioManager.stopLowHealthMusic();
-      useGameStore.getState().setLowHealthActive(false);
+      gameStore.getState().setLowHealthActive(false);
       if (this.unsubscribeMusicVolume) {
         this.unsubscribeMusicVolume();
         this.unsubscribeMusicVolume = undefined;
@@ -1700,7 +1700,7 @@ const createSpaceArenaScene = (
       }
 
       // Process pending server skill effects first so they are always sent (even when chat focused or early return).
-      const store = useGameStore.getState();
+      const store = gameStore.getState();
       const pending = store.pendingServerSkillEffect;
       if (pending && this.socket?.readyState === WebSocket.OPEN) {
         if (pending.skillId === "immunity_5s") {
@@ -1713,7 +1713,7 @@ const createSpaceArenaScene = (
             durationMs: pending.durationMs,
           });
         } else if (pending.skillId === "fury_7s") {
-          const furyLevel = Math.max(1, useGameStore.getState().player?.mutations?.skillLevels?.fury_7s ?? 1);
+          const furyLevel = Math.max(1, gameStore.getState().player?.mutations?.skillLevels?.fury_7s ?? 1);
           const furyParams = getFuryParams(furyLevel);
           this.sendWorldAction("skill_fury", {
             durationMs: furyParams.durationMs,
@@ -1726,7 +1726,7 @@ const createSpaceArenaScene = (
         } else if (pending.skillId === "gravity_pit") {
           const x = Math.round(this.player.x);
           const y = Math.round(this.player.y);
-          const gpLevel = Math.max(1, useGameStore.getState().player?.mutations?.skillLevels?.gravity_pit ?? 1);
+          const gpLevel = Math.max(1, gameStore.getState().player?.mutations?.skillLevels?.gravity_pit ?? 1);
           const gpParams = getGravityPitParams(gpLevel);
           this.sendWorldAction("skill_gravity_pit", {
             durationMs: gpParams.durationMs,
@@ -1734,7 +1734,7 @@ const createSpaceArenaScene = (
             x,
             y,
           });
-          const myUserId = useGameStore.getState().user?.id ?? null;
+          const myUserId = gameStore.getState().user?.id ?? null;
           const optimisticPit = {
             id: `opt-gp-${Date.now()}`,
             x,
@@ -1839,7 +1839,7 @@ const createSpaceArenaScene = (
           this.updateHealthBar();
         }
         if (this.playerNameText) {
-          const nickname = useGameStore.getState().user?.nickname ?? "";
+          const nickname = gameStore.getState().user?.nickname ?? "";
           this.playerNameText.setText(nickname);
           this.playerNameText.setPosition(this.player.x, this.player.y - 68);
           this.playerNameText.setDepth(this.player.depth + 4);
@@ -1865,7 +1865,7 @@ const createSpaceArenaScene = (
           }
         }
         if (this.speedBuffText) {
-          const speedEffect = useGameStore.getState().activeSkillEffect;
+          const speedEffect = gameStore.getState().activeSkillEffect;
           const speedActive =
             speedEffect?.skillId === "movement_speed_5s" &&
             (speedEffect?.expiresAt ?? 0) > Date.now();
@@ -1880,7 +1880,7 @@ const createSpaceArenaScene = (
           }
         }
         if (this.healingBuffText) {
-          const healingEffect = useGameStore.getState().activeSkillEffect;
+          const healingEffect = gameStore.getState().activeSkillEffect;
           const healingActive =
             healingEffect?.skillId === "healing_5s" &&
             (healingEffect?.expiresAt ?? 0) > Date.now();
@@ -1898,7 +1898,7 @@ const createSpaceArenaScene = (
           }
         }
         if (this.furyBuffText) {
-          const furyEffect = useGameStore.getState().activeSkillEffect;
+          const furyEffect = gameStore.getState().activeSkillEffect;
           const furyActive =
             furyEffect?.skillId === "fury_7s" &&
             (furyEffect?.expiresAt ?? 0) > Date.now();
@@ -1913,7 +1913,7 @@ const createSpaceArenaScene = (
           }
         }
         if (this.teleportCastText) {
-          const teleportEffect = useGameStore.getState().activeSkillEffect;
+          const teleportEffect = gameStore.getState().activeSkillEffect;
           const teleportCasting =
             teleportEffect?.skillId === "teleport_3s" &&
             (teleportEffect?.expiresAt ?? 0) > Date.now();
@@ -1948,7 +1948,7 @@ const createSpaceArenaScene = (
           }
         }
         if (this.furyFlameEmitter) {
-          const furyEffect = useGameStore.getState().activeSkillEffect;
+          const furyEffect = gameStore.getState().activeSkillEffect;
           const furyActive =
             furyEffect?.skillId === "fury_7s" &&
             (furyEffect?.expiresAt ?? 0) > Date.now();
@@ -1963,12 +1963,12 @@ const createSpaceArenaScene = (
         return;
       }
 
-      const playerState = useGameStore.getState().player;
+      const playerState = gameStore.getState().player;
       if (playerState) {
         this.health = playerState.health ?? this.health;
         this.maxHealth = playerState.maxHealth ?? this.maxHealth;
         const level = playerState.level ?? 1;
-        const choice = useGameStore.getState().user?.shipChoice;
+        const choice = gameStore.getState().user?.shipChoice;
         const desiredLevelScale = getLevelScale(level);
         if (Math.abs(desiredLevelScale - this.appliedLevelScale) > 0.0001) {
           this.appliedLevelScale = desiredLevelScale;
@@ -1997,7 +1997,7 @@ const createSpaceArenaScene = (
           this.aimRotation = playerState.rotation ?? this.aimRotation;
           this.player.setRotation(
             this.aimRotation +
-              getSkinRotationOffset(useGameStore.getState().user?.shipChoice)
+              getSkinRotationOffset(gameStore.getState().user?.shipChoice)
           );
           this.appliedServerPosition = true;
         }
@@ -2005,11 +2005,11 @@ const createSpaceArenaScene = (
 
       if (playerState && playerState.health <= 0) {
         if (
-          useGameStore.getState().pendingRespawn &&
+          gameStore.getState().pendingRespawn &&
           this.socket?.readyState === WebSocket.OPEN
         ) {
           const vengeanceTarget =
-            useGameStore.getState().vengeanceRespawnTargetUserId;
+            gameStore.getState().vengeanceRespawnTargetUserId;
           if (vengeanceTarget != null && Number.isFinite(vengeanceTarget)) {
             this.socket.send(
               JSON.stringify({
@@ -2020,7 +2020,7 @@ const createSpaceArenaScene = (
           } else {
             this.socket.send(JSON.stringify({ type: "respawn" }));
           }
-          useGameStore.getState().clearRespawnRequest();
+          gameStore.getState().clearRespawnRequest();
         }
         if (!this.deathNotified && this.socket?.readyState === WebSocket.OPEN) {
           this.socket.send(JSON.stringify({ type: "player_dead" }));
@@ -2040,7 +2040,7 @@ const createSpaceArenaScene = (
           player.setVelocity(0, 0);
           player.setVisible(true);
           player.play(
-            getShipBlindAnim(useGameStore.getState().user?.shipChoice),
+            getShipBlindAnim(gameStore.getState().user?.shipChoice),
             true
           );
           const body = player.body as Phaser.Physics.Arcade.Body | null;
@@ -2060,11 +2060,11 @@ const createSpaceArenaScene = (
         if (player && player.scene) {
           player.setVisible(true);
           player.play(
-            getShipIdleAnim(useGameStore.getState().user?.shipChoice),
+            getShipIdleAnim(gameStore.getState().user?.shipChoice),
             true
           );
           player.setScale(
-            getShipScale(useGameStore.getState().user?.shipChoice)
+            getShipScale(gameStore.getState().user?.shipChoice)
           );
           const body = player.body as Phaser.Physics.Arcade.Body | null;
           if (body) {
@@ -2084,17 +2084,17 @@ const createSpaceArenaScene = (
           Math.abs(this.mobileState.joystickY) > 0.12);
 
       const movementSpeedActive =
-        useGameStore.getState().activeSkillEffect?.skillId ===
+        gameStore.getState().activeSkillEffect?.skillId ===
           "movement_speed_5s" &&
-        (useGameStore.getState().activeSkillEffect?.expiresAt ?? 0) >
+        (gameStore.getState().activeSkillEffect?.expiresAt ?? 0) >
           Date.now();
       const accelerationLevel = movementSpeedActive
-        ? Math.max(1, useGameStore.getState().player?.mutations?.skillLevels?.movement_speed_5s ?? 1)
+        ? Math.max(1, gameStore.getState().player?.mutations?.skillLevels?.movement_speed_5s ?? 1)
         : 0;
       const movementSpeedBoost = movementSpeedActive
         ? getAccelerationParams(accelerationLevel).speedMultiplier
         : 1;
-      const myUserId = useGameStore.getState().user?.id ?? null;
+      const myUserId = gameStore.getState().user?.id ?? null;
       const inGravityPit = this.isInsideAnyGravityPitExcludingOwner(
         this.lastWorldGravityPits,
         this.player.x,
@@ -2155,14 +2155,14 @@ const createSpaceArenaScene = (
 
       // Fury skill: increase keeper size for duration; restore when effect ends
       const furyActive =
-        useGameStore.getState().activeSkillEffect?.skillId === "fury_7s" &&
-        (useGameStore.getState().activeSkillEffect?.expiresAt ?? 0) >
+        gameStore.getState().activeSkillEffect?.skillId === "fury_7s" &&
+        (gameStore.getState().activeSkillEffect?.expiresAt ?? 0) >
           Date.now();
       const furyLevel = furyActive
-        ? Math.max(1, useGameStore.getState().player?.mutations?.skillLevels?.fury_7s ?? 1)
+        ? Math.max(1, gameStore.getState().player?.mutations?.skillLevels?.fury_7s ?? 1)
         : 0;
       const furySizeMult = furyActive ? getFuryParams(furyLevel).sizeMult : 1;
-      const choice = useGameStore.getState().user?.shipChoice;
+      const choice = gameStore.getState().user?.shipChoice;
       const baseScale = getShipScale(choice) * this.appliedLevelScale;
       const furyScale = baseScale * furySizeMult;
       this.player.setScale(furyScale);
@@ -2230,7 +2230,7 @@ const createSpaceArenaScene = (
         this.aimRotation = rotation;
         this.player.setRotation(
           rotation +
-            getSkinRotationOffset(useGameStore.getState().user?.shipChoice)
+            getSkinRotationOffset(gameStore.getState().user?.shipChoice)
         );
       } else {
         this.player.setVelocity(0, 0);
@@ -2271,7 +2271,7 @@ const createSpaceArenaScene = (
         activeSkill?.skillId === "continuous_laser" &&
         now < (activeSkill?.expiresAt ?? 0);
       const beamLevel = isContinuousLaser
-        ? Math.max(1, useGameStore.getState().player?.mutations?.skillLevels?.continuous_laser ?? 1)
+        ? Math.max(1, gameStore.getState().player?.mutations?.skillLevels?.continuous_laser ?? 1)
         : 0;
       const beamParams = beamLevel >= 1 ? getContinuousBeamParams(beamLevel) : null;
 
@@ -2309,7 +2309,7 @@ const createSpaceArenaScene = (
           }
           this.player.play(getShipAttackAnim(choice), true);
           if (typeof window !== "undefined") {
-            const vol = useGameStore.getState().sfxVolume ?? 0.55;
+            const vol = gameStore.getState().sfxVolume ?? 0.55;
             const sfxVol = Math.max(0, Math.min(1, vol));
             this.audioManager.startContinuousLaserSound(sfxVol);
           }
@@ -2334,7 +2334,7 @@ const createSpaceArenaScene = (
           CONTINUOUS_LASER_HIT_INTERVAL_MS
         ) {
           this.lastContinuousLaserHitAt = now;
-          const baseDamage = useGameStore.getState().player?.damage ?? 18;
+          const baseDamage = gameStore.getState().player?.damage ?? 18;
           const damage = Math.floor(baseDamage * damageMultiplier);
           if (beamCount > 1) {
             const pointInAnyBeam = (px: number, py: number) => {
@@ -2452,7 +2452,7 @@ const createSpaceArenaScene = (
         const inSafeZoneNow =
           zoneActiveNow &&
           this.isInsideSafeZone(zoneNow, this.player.x, this.player.y);
-        if (inSafeZoneNow || useGameStore.getState().playerInSafeZone) {
+        if (inSafeZoneNow || gameStore.getState().playerInSafeZone) {
           this.mobileState.fireJustPressed = false;
           return;
         }
@@ -2463,7 +2463,7 @@ const createSpaceArenaScene = (
           "laser_blue"
         ) as Phaser.Physics.Arcade.Image | undefined;
         if (laser) {
-          const choice = useGameStore.getState().user?.shipChoice;
+          const choice = gameStore.getState().user?.shipChoice;
           const tint = choice === "keeper20" ? 0xffa500 : 0xff3b3b;
           laser.setRotation(this.aimRotation);
           laser.setScale(0.7);
@@ -2474,7 +2474,7 @@ const createSpaceArenaScene = (
         }
         this.lastFiringAt = Date.now();
         // Play the eye-laser animation briefly, then revert to tentacle idle.
-        const choice = useGameStore.getState().user?.shipChoice;
+        const choice = gameStore.getState().user?.shipChoice;
         const attackKey = getShipAttackAnim(choice);
         const idleKey = getShipIdleAnim(choice);
         this.player.play(attackKey, true);
@@ -2483,7 +2483,7 @@ const createSpaceArenaScene = (
           if (!this.player || !this.player.active) {
             return;
           }
-          const currentChoice = useGameStore.getState().user?.shipChoice;
+          const currentChoice = gameStore.getState().user?.shipChoice;
           if (this.health > 0 && getShipIdleAnim(currentChoice) === idleKey) {
             this.player.play(idleKey, true);
           }
@@ -2539,8 +2539,8 @@ const createSpaceArenaScene = (
         this.updateHealthBar();
       }
       if (this.playerNameText) {
-        const nickname = useGameStore.getState().user?.nickname ?? "";
-        const level = useGameStore.getState().player?.level ?? 1;
+        const nickname = gameStore.getState().user?.nickname ?? "";
+        const level = gameStore.getState().player?.level ?? 1;
         this.playerNameText.setText(this.formatPilotName(nickname, level));
         this.playerNameText.setPosition(this.player.x, this.player.y - 68);
         this.playerNameText.setDepth(this.player.depth + 4);
@@ -2563,7 +2563,7 @@ const createSpaceArenaScene = (
         }
       }
       if (this.speedBuffText) {
-        const speedEffect = useGameStore.getState().activeSkillEffect;
+        const speedEffect = gameStore.getState().activeSkillEffect;
         const speedActive =
           speedEffect?.skillId === "movement_speed_5s" &&
           (speedEffect?.expiresAt ?? 0) > Date.now();
@@ -2578,7 +2578,7 @@ const createSpaceArenaScene = (
         }
       }
       if (this.healingBuffText) {
-        const healingEffect = useGameStore.getState().activeSkillEffect;
+        const healingEffect = gameStore.getState().activeSkillEffect;
         const healingActive =
           healingEffect?.skillId === "healing_5s" &&
           (healingEffect?.expiresAt ?? 0) > Date.now();
@@ -2593,7 +2593,7 @@ const createSpaceArenaScene = (
         }
       }
       if (this.furyBuffText) {
-        const furyEffect = useGameStore.getState().activeSkillEffect;
+        const furyEffect = gameStore.getState().activeSkillEffect;
         const furyActive =
           furyEffect?.skillId === "fury_7s" &&
           (furyEffect?.expiresAt ?? 0) > Date.now();
@@ -2608,7 +2608,7 @@ const createSpaceArenaScene = (
         }
       }
       if (this.teleportCastText) {
-        const teleportEffect = useGameStore.getState().activeSkillEffect;
+        const teleportEffect = gameStore.getState().activeSkillEffect;
         const teleportCasting =
           teleportEffect?.skillId === "teleport_3s" &&
           (teleportEffect?.expiresAt ?? 0) > Date.now();
@@ -2644,17 +2644,17 @@ const createSpaceArenaScene = (
       this.updateLowHealthEffects();
 
       // Main music: duck to 25% when low health so tension track is audible
-      const musicVol = useGameStore.getState().musicVolume ?? 0.45;
+      const musicVol = gameStore.getState().musicVolume ?? 0.45;
       const baseVol = Math.max(0, Math.min(1, musicVol));
-      const lowHealth = useGameStore.getState().lowHealthActive;
-      this.audioManager.updateVolumes(useGameStore.getState());
+      const lowHealth = gameStore.getState().lowHealthActive;
+      this.audioManager.updateVolumes(gameStore.getState());
     }
 
     private updateLowHealthEffects() {
       const ratio = this.maxHealth > 0 ? this.health / this.maxHealth : 1;
       const lowHealth =
         this.health > 0 && ratio < SpaceArenaScene.LOW_HEALTH_THRESHOLD;
-      useGameStore.getState().setLowHealthActive(lowHealth);
+      gameStore.getState().setLowHealthActive(lowHealth);
 
       const cam = this.cameras.main;
       const now = this.time.now;
@@ -2771,3 +2771,5 @@ const createSpaceArenaScene = (
 };
 
 export { createSpaceArenaScene };
+
+

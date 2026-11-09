@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useGameStore } from "@/store/gameStore";
+import { gameStore } from "@/store/gameStore";
 import { createSpaceArenaScene } from "./PhaserArena";
 
 type SpaceArenaProps = {
@@ -10,7 +10,7 @@ const SpaceArena = ({ paused = false }: SpaceArenaProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<import("phaser").Game | null>(null);
   const sceneKeyRef = useRef<string>("SpaceArenaScene");
-  const userId = useGameStore((s) => s.user?.id);
+  const userId = gameStore.getState().user?.id;
 
   useEffect(() => {
     let game: import("phaser").Game | null = null;
@@ -22,9 +22,9 @@ const SpaceArena = ({ paused = false }: SpaceArenaProps) => {
         return;
       }
 
-      const { collectResource } = useGameStore.getState();
-      const { consumeEnergy } = useGameStore.getState();
-      const { damagePlayer } = useGameStore.getState();
+      const { collectResource } = gameStore.getState();
+      const { consumeEnergy } = gameStore.getState();
+      const { damagePlayer } = gameStore.getState();
       const SpaceArenaScene = createSpaceArenaScene(
         Phaser,
         collectResource,
@@ -111,7 +111,7 @@ const SpaceArena = ({ paused = false }: SpaceArenaProps) => {
       return;
     }
     const id = window.setInterval(() => {
-      void useGameStore.getState().loadPlayer();
+      void gameStore.getState().loadPlayer();
     }, 3000);
     return () => window.clearInterval(id);
   }, [userId]);
@@ -125,4 +125,6 @@ const SpaceArena = ({ paused = false }: SpaceArenaProps) => {
 };
 
 export default SpaceArena;
+
+
 

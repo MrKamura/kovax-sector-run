@@ -184,7 +184,6 @@ class MessageHandlerService {
             const stored = (0, utils_1.getMonsterProgressEntry)(progress, monsterKey) || {};
             const exp = Number(stored.exp ?? playerRow.exp ?? 0) || 0;
             const level = Number(stored.level ?? 1) || 1;
-            const expToNext = Number.isFinite(Number(stored.expToNext)) ? Number(stored.expToNext) : (0, utils_1.expToNextLevel)(level);
             const percent = Math.max(0, Math.min(100, penaltyPercent)) / 100;
             let lostExp = Math.floor(exp * percent);
             let lostTokens = Math.floor(tokens * percent);
@@ -1568,7 +1567,7 @@ class MessageHandlerService {
                     console.log(`[MessageHandler] Quest ${q.id}: expiresAt=${new Date(expiresAt).toISOString()}, now=${new Date(now).toISOString()}, expired=${now >= expiresAt}`);
                 }
             }
-            const cancelled = await services.quest.cancelQuest(user.id, presenceEntry.sectorId, questType);
+            await services.quest.cancelQuest(user.id, presenceEntry.sectorId, questType);
             // Убираем флаг hasPvpQuest если был активный PvP квест и он был отменен
             if (questType === "pvp_kills" && hasPvpQuest && presenceEntry.hasPvpQuest) {
                 presenceEntry.hasPvpQuest = false;

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { getSkillDef } from "../../server/game/shared/skills";
 import { getEffectiveEnergyCost } from "../../server/game/shared/mutation";
-import { useGameStore } from "@/store/gameStore";
+import { useGameStore, gameStore } from "@/store/gameStore";
 
 export function useSkillHotkeys(
   enabled: boolean
@@ -15,7 +15,7 @@ export function useSkillHotkeys(
         const tag = active?.tagName?.toLowerCase();
         if (tag === "input" || tag === "textarea") return;
         const index = key.charCodeAt(0) - "1".charCodeAt(0);
-        const state = useGameStore.getState();
+        const state = gameStore.getState();
         const baseSkills = (state.player?.skills ?? []).slice(0, 9);
         const skillId = baseSkills[index];
         const def = skillId ? getSkillDef(skillId) : null;
@@ -34,3 +34,4 @@ export function useSkillHotkeys(
     return () => window.removeEventListener("keydown", handler);
   }, [enabled]);
 }
+

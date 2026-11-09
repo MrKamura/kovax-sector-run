@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { useGameStore } from "@/store/gameStore";
+import { gameStore } from "@/store/gameStore";
 import styles from "../page.module.css";
 
 interface Position {
@@ -12,7 +12,7 @@ interface QuestPanelProps {
 }
 
 export function QuestPanel({ containerRef }: QuestPanelProps) {
-  const activeQuests = useGameStore((s) => s.activeQuests);
+  const activeQuests = gameStore.getState().activeQuests;
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const previousCompletedRef = useRef<Map<number, number>>(new Map());
   
@@ -42,14 +42,14 @@ export function QuestPanel({ containerRef }: QuestPanelProps) {
       if (quest.completedAt && quest.completedAt !== previousCompletedRef.current.get(quest.id)) {
         // Квест только что завершился
         previousCompletedRef.current.set(quest.id, quest.completedAt);
-        useGameStore.getState().setQuestCompleteReward({
+        gameStore.getState().setQuestCompleteReward({
           exp: quest.rewardExp,
           tokens: quest.rewardTokens,
         });
       }
     }
     // Очищаем завершенные квесты из ref
-    const activeQuestIds = new Set(activeQuests.filter(q => q).map(q => q!.id));
+    const activeQuestIds = new Set(activeQuests.filter((q) => q !== null).map((q) => q!.id));
     for (const [id] of previousCompletedRef.current) {
       if (!activeQuestIds.has(id)) {
         previousCompletedRef.current.delete(id);
@@ -62,14 +62,14 @@ export function QuestPanel({ containerRef }: QuestPanelProps) {
       const now = Date.now();
       setCurrentTime(now);
       // Удаляем истёкшие квесты из store (сервер их уже удалил, UI не должен показывать «Отменить»)
-      const current = useGameStore.getState().activeQuests;
+      const current = gameStore.getState().activeQuests;
       const stillActive = current.filter(
         (q): q is NonNullable<typeof q> =>
           q !== null && q.completedAt === null && (q.expiresAt - now) > 0
       );
       if (stillActive.length !== current.length) {
-        useGameStore.getState().setActiveQuests(stillActive);
-        useGameStore.getState().setDailyQuest(stillActive.length > 0 ? stillActive[0] : null);
+        gameStore.getState().setActiveQuests(stillActive);
+        gameStore.getState().setDailyQuest(stillActive.length > 0 ? stillActive[0] : null);
       }
     };
 
@@ -196,3 +196,5 @@ export function QuestPanel({ containerRef }: QuestPanelProps) {
     </div>
   );
 }
+
+

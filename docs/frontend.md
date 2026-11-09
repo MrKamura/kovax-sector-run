@@ -49,6 +49,31 @@ PlayerPanel, QuestPanel, QuestButton, ChatPanel, SettingsMenu, TournamentButton,
 
 Hooks: `src/hooks/` — `useChat`, `useSplash`, `useIntroStory`, `useTutorial`, skill hotkeys, cooldown.
 
+## Native UI (`src/components/nativeX/`)
+
+New native JS UI library for gradual migration from React:
+
+| File | Role |
+|------|------|
+| `Component.ts` | Base class for all components |
+| `Button.ts` | Button component |
+| `Input.ts` | Input field component |
+| `Card.ts` | Card container component |
+| `AuthScreen.ts` | Login/register screen |
+| `index.ts` | All exports |
+| `nativeX.config.ts` | Configuration |
+| `examples.ts` | Usage examples |
+
+Core modules (`src/native/`):
+
+| File | Role |
+|------|------|
+| `ScreenManager.ts` | Screen transitions |
+| `EventEmitter.ts` | Event system |
+| `main.ts` | App entry example |
+
+Details: [docs/native.md](./native.md).
+
 ## Tutorial
 
 localStorage:
