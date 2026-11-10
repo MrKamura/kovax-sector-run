@@ -22,7 +22,7 @@ export { QuestButton } from './QuestButton';
 export { TournamentButton } from './TournamentButton';
 export { MutationButton } from './MutationButton';
 export { SplashScreen } from './SplashScreen';
-export { SettingsMenu } from './SettingsMenu';
+// SettingsMenu - упрощенная версия в React
 export { ShipChoiceCard } from './ShipChoiceCard';
 export { IntroStoryOverlay } from './IntroStoryOverlay';
 
@@ -49,6 +49,3 @@ export {
 // Native store (аналог Zustand без React)
 export type { StoreListener, Store, StateSelector, UseStoreOptions } from '../../store/nativeStore';
 export { createNativeStore, subscribeToStore, getStoreState, setStoreState, useStoreSelector } from '../../store/nativeStore';
-
-// Панель игрока
-export { PlayerPanel } from './PlayerPanel';
