@@ -33,15 +33,18 @@ When shipping a release: bump `package.json` `version`, add a section here, upda
 - `nativeIntroStory.ts` - native intro story machine (аналог useIntroStory)
 - `nativeSplash.ts` - native splash machine (аналог useSplash)
 - `nativeTutorial.ts` - native tutorial machine (аналог useTutorial)
+- `nativeGameStore.ts` - native game store helpers (простой API для работы с gameStore)
 
 ### Changed
 
 - Updated `index.ts` exports to include all new native components
 - Updated `hooks/index.ts` to export native machine functions
+- Updated `docs/native.md` with native store and hook documentation
 - All native components follow Component base class pattern with `init()`, `render()`, `destroy()` methods
 - Components support `EventEmitter` for inter-component communication
 - Added native store API: `createNativeStore`, `subscribeToStore`, `getStoreState`, `setStoreState`, `useStoreSelector`
 - Added native hook API: `createIntroStoryMachine`, `createSplashMachine`, `createTutorialMachine`
+- Added native game store API: `subscribeToGameStore`, `getGameStoreState`, `setGameStoreState`, `useGameStoreSelector`
 
 ---
 
