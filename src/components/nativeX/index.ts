@@ -17,11 +17,14 @@ export { DeathOverlay } from './DeathOverlay';
 export { LevelUpOverlay } from './LevelUpOverlay';
 export { ExitOverlay } from './ExitOverlay';
 export { QuestCompleteOverlay } from './QuestCompleteOverlay';
-export { ControlHintsOverlay } from './TutorialOverlay';
-export { PanelHintOverlay } from './TutorialOverlay';
+export { ControlHintsOverlay, PanelHintOverlay } from './TutorialOverlay';
 export { QuestButton } from './QuestButton';
 export { TournamentButton } from './TournamentButton';
 export { MutationButton } from './MutationButton';
+export { SplashScreen } from './SplashScreen';
+export { SettingsMenu } from './SettingsMenu';
+export { ShipChoiceCard } from './ShipChoiceCard';
+export { IntroStoryOverlay } from './IntroStoryOverlay';
 
 // Типы и конфигурация
 export type { 
@@ -31,6 +34,10 @@ export type {
   CardOptions,
   NativeXConfig,
   AuthScreenEventData,
+  SplashScreenOptions,
+  SettingsMenuOptions,
+  ShipChoiceCardOptions,
+  IntroStoryOverlayOptions,
 } from './types';
 export { 
   setNativeXConfig, 
@@ -44,3 +51,4 @@ export type { StoreListener, Store, StateSelector, UseStoreOptions } from '../..
 export { createNativeStore, subscribeToStore, getStoreState, setStoreState, useStoreSelector } from '../../store/nativeStore';
 
 // Панель игрока
+export { PlayerPanel } from './PlayerPanel';

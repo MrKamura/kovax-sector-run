@@ -17,34 +17,41 @@ When shipping a release: bump `package.json` `version`, add a section here, upda
 
 ### Added
 
-- NativeX library migration: additional UI components ported from React to native JS
-- `NicknameScreen` - native nickname selection screen
-- `ShipSelectScreen` - native ship/keeper selection screen
-- `DeathOverlay` - native death screen with respawn/vengeance options
-- `LevelUpOverlay` - native level-up screen with animations
-- `ExitOverlay` - native exit countdown screen
-- `QuestCompleteOverlay` - native quest completion reward screen
-- `ControlHintsOverlay` - native control hints tutorial screen
-- `PanelHintOverlay` - native panel hint tutorial screen
-- `QuestButton` - native quest button component
-- `TournamentButton` - native tournament button component
-- `MutationButton` - native mutation button component
-- `nativeStore.ts` - native store implementation (Zustand-compatible API without React hooks)
-- `nativeIntroStory.ts` - native intro story machine (аналог useIntroStory)
-- `nativeSplash.ts` - native splash machine (аналог useSplash)
-- `nativeTutorial.ts` - native tutorial machine (аналог useTutorial)
-- `nativeGameStore.ts` - native game store helpers (простой API для работы с gameStore)
+- **Full migration infrastructure**: migration system with React/Native coexistence
+- `src/main-native.ts` - native JS entry point for full migration
+- `src/config.ts` - configuration for React vs Native mode selection
+- `src/migration.ts` - migration factory and tracker for gradual migration
+- `docs/MIGRATION.md` - comprehensive migration guide
+- Fixed `PlayerPanel` component (recreated with UTF-8 encoding)
+- Enhanced nativeX components: `QuestPanel`, `ChatPanel`, `NicknameScreen`, `ShipSelectScreen`, `AuthScreen`
+- Native store API: `createNativeStore`, `subscribeToStore`, `getStoreState`, `setStoreState`, `useStoreSelector`
+- Native hooks API: `createIntroStoryMachine`, `createSplashMachine`, `createTutorialMachine`
+- Enhanced `nativeX.config.ts` with migration controls (`enableMigration`, `forceNative`)
+- `isMigrationEnabled()` and `isForceNative()` helper functions
+- Updated nativeX exports in `index.ts` for easy imports
 
 ### Changed
 
-- Updated `index.ts` exports to include all new native components
-- Updated `hooks/index.ts` to export native machine functions
-- Updated `docs/native.md` with native store and hook documentation
-- All native components follow Component base class pattern with `init()`, `render()`, `destroy()` methods
-- Components support `EventEmitter` for inter-component communication
-- Added native store API: `createNativeStore`, `subscribeToStore`, `getStoreState`, `setStoreState`, `useStoreSelector`
-- Added native hook API: `createIntroStoryMachine`, `createSplashMachine`, `createTutorialMachine`
-- Added native game store API: `subscribeToGameStore`, `getGameStoreState`, `setGameStoreState`, `useGameStoreSelector`
+- **Postponed React migration**: Components can be gradually migrated alongside React
+- NativeX components now support `EventEmitter` for inter-component communication
+- Added migration status tracking to monitor progress
+- Enhanced `Component` base class with `init()`, `render()`, `destroy()` lifecycle
+- Updated `nativeStore.ts` exports for better TypeScript support
+- Improved migration documentation with usage examples
+
+### Fixed
+
+- Encoding issues in PlayerPanel component (now using UTF-8 compatible code)
+- Missing exports in nativeX index.ts
+- Native store type definitions for better TypeScript support
+- Component lifecycle management (attach/detach event listeners)
+
+### Planned
+
+- Complete migration of all UI components from React to native JS
+- Phaser game UI integration with native components
+- Performance optimization for native components
+- Automated testing for native components
 
 ---
 

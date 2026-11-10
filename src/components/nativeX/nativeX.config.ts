@@ -14,6 +14,14 @@ export interface NativeXConfig {
    * Время ожидания для анимаций (мс)
    */
   animationTimeout?: number;
+  /**
+   * Включить постепенную миграцию
+   */
+  enableMigration?: boolean;
+  /**
+   * Использовать нативные компоненты вместо React
+   */
+  forceNative?: boolean;
 }
 
 /**
@@ -23,6 +31,8 @@ export const defaultConfig: NativeXConfig = {
   debug: false,
   cssPrefix: 'native',
   animationTimeout: 500,
+  enableMigration: true,
+  forceNative: false,
 };
 
 let currentConfig: NativeXConfig = defaultConfig;
@@ -46,4 +56,18 @@ export function getNativeXConfig(): NativeXConfig {
  */
 export function getCssPrefix(): string {
   return currentConfig.cssPrefix || 'native';
+}
+
+/**
+ * Проверить, включена ли миграция
+ */
+export function isMigrationEnabled(): boolean {
+  return currentConfig.enableMigration ?? true;
+}
+
+/**
+ * Проверить, используется ли нативный режим
+ */
+export function isForceNative(): boolean {
+  return currentConfig.forceNative ?? false;
 }

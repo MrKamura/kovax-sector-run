@@ -1,6 +1,4 @@
-/**
- * Типы для нативных компонентов
- */
+/**\n * Типы для нативных компонентов\n */
 
 /**
  * Опции для базового компонента
@@ -80,6 +78,64 @@ export type AuthScreenEvent = keyof typeof AuthScreenEvents;
 export interface AuthScreenEventData {
   email: string;
   password: string;
+}
+
+/**
+ * Опции для SplashScreen
+ */
+export interface SplashScreenOptions extends ComponentOptions {
+  fading?: boolean;
+}
+
+/**
+ * Опции для SettingsMenu
+ */
+export interface SettingsMenuOptions extends ComponentOptions {
+  userEmail: string;
+  musicVolume: number;
+  sfxVolume: number;
+  onMusicVolumeChange: (v: number) => void;
+  onSfxVolumeChange: (v: number) => void;
+  formA: any;
+  formB: any;
+  maxHp: number;
+  maxDmg: number;
+  maxSpd: number;
+  pct: (value: number, max: number) => number;
+  currentShip: string | null;
+  onShipChange: (key: string) => void;
+  onClose: () => void;
+  onContinue: () => void;
+  onExitGame: () => void;
+  onExitAndLogout: () => void;
+  shipChangeLoading: boolean;
+  authLoading: boolean;
+  exitCountdown: number | null;
+}
+
+/**
+ * Опции для ShipChoiceCard
+ */
+export interface ShipChoiceCardOptions extends ComponentOptions {
+  keeperKey: string;
+  display: any;
+  maxHp: number;
+  maxDmg: number;
+  maxSpd: number;
+  pct: (value: number, max: number) => number;
+  onSelect: () => void;
+  disabled?: boolean;
+  selected?: boolean;
+}
+
+/**
+ * Опции для IntroStoryOverlay
+ */
+export interface IntroStoryOverlayOptions extends ComponentOptions {
+  charsShown: number;
+  canProceed: boolean;
+  onProceed: () => void;
+  onSkip: () => void;
 }
 
 /**
