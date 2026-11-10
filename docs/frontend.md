@@ -28,6 +28,14 @@ Styles: `src/page.module.css`. UI constants: `src/constants.ts`.
 - quests / tournament UI state
 - `applyPlayerUpdate` — level-up celebration via `previousLevel` **before** merging the patch
 
+`src/store/nativeStore.ts` — Native store (Zustand-compatible API without React hooks):
+
+- `createNativeStore<T>` — create store with initial state
+- `subscribeToStore` — subscribe to state changes
+- `getStoreState` — get current state
+- `setStoreState` — update state
+- `useStoreSelector` — extract selector from state
+
 REST calls go to `/api/*` (served by the game process, `server/rest/`).
 
 ## Phaser

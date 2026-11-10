@@ -29,12 +29,14 @@ When shipping a release: bump `package.json` `version`, add a section here, upda
 - `QuestButton` - native quest button component
 - `TournamentButton` - native tournament button component
 - `MutationButton` - native mutation button component
+- `nativeStore.ts` - native store implementation (Zustand-compatible API without React hooks)
 
 ### Changed
 
 - Updated `index.ts` exports to include all new native components
 - All native components follow Component base class pattern with `init()`, `render()`, `destroy()` methods
 - Components support `EventEmitter` for inter-component communication
+- Added native store API: `createNativeStore`, `subscribeToStore`, `getStoreState`, `setStoreState`, `useStoreSelector`
 
 ---
 

@@ -39,4 +39,8 @@ export {
   defaultConfig 
 } from './nativeX.config';
 
+// Native store (аналог Zustand без React)
+export type { StoreListener, Store, StateSelector, UseStoreOptions } from '../../store/nativeStore';
+export { createNativeStore, subscribeToStore, getStoreState, setStoreState, useStoreSelector } from '../../store/nativeStore';
+
 // Панель игрока

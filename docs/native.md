@@ -93,7 +93,9 @@ manager.showScreen('login');
 4. Keep DOM access minimal
 5. Use `nativeX/` prefix for CSS classes
 
-## Planned Components`r`n`r`n- PlayerPanel - Main player UI with skills ✅
+## Planned Components
+
+- PlayerPanel - Main player UI with skills ✅
 - QuestPanel - Quest tracking ✅
 - ChatPanel - In-game chat ✅
 - SettingsMenu - Game settings
