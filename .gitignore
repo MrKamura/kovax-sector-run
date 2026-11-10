@@ -35,3 +35,9 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# local noise
+debug.log
+**/debug.log
+*.bak
+деплой.txt
