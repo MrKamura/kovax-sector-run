@@ -57,6 +57,18 @@ PlayerPanel, QuestPanel, QuestButton, ChatPanel, SettingsMenu, TournamentButton,
 
 Hooks: `src/hooks/` — `useChat`, `useSplash`, `useIntroStory`, `useTutorial`, skill hotkeys, cooldown.
 
+## Native hooks (`src/hooks/`)
+
+Native JS hooks without React dependencies:
+
+| File | Role |
+|------|------|
+| `nativeIntroStory.ts` | Intro story machine (аналог useIntroStory) |
+| `nativeSplash.ts` | Splash machine (аналог useSplash) |
+| `nativeTutorial.ts` | Tutorial machine (аналог useTutorial) |
+
+All native hooks provide `createXMachine()` functions that return machines with `getState()`, `subscribe()`, and lifecycle methods (`enter`, `leave`, `destroy`).
+
 ## Native UI (`src/components/nativeX/`)
 
 New native JS UI library for gradual migration from React:

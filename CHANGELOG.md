@@ -30,13 +30,18 @@ When shipping a release: bump `package.json` `version`, add a section here, upda
 - `TournamentButton` - native tournament button component
 - `MutationButton` - native mutation button component
 - `nativeStore.ts` - native store implementation (Zustand-compatible API without React hooks)
+- `nativeIntroStory.ts` - native intro story machine (аналог useIntroStory)
+- `nativeSplash.ts` - native splash machine (аналог useSplash)
+- `nativeTutorial.ts` - native tutorial machine (аналог useTutorial)
 
 ### Changed
 
 - Updated `index.ts` exports to include all new native components
+- Updated `hooks/index.ts` to export native machine functions
 - All native components follow Component base class pattern with `init()`, `render()`, `destroy()` methods
 - Components support `EventEmitter` for inter-component communication
 - Added native store API: `createNativeStore`, `subscribeToStore`, `getStoreState`, `setStoreState`, `useStoreSelector`
+- Added native hook API: `createIntroStoryMachine`, `createSplashMachine`, `createTutorialMachine`
 
 ---
 
