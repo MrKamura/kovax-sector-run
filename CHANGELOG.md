@@ -11,6 +11,34 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning foll
 When shipping a release: bump `package.json` `version`, add a section here, update `docs/` if behavior/architecture changed.
 
 ---
+---
+
+## [Unreleased]
+
+### Added
+
+- NativeX library migration: additional UI components ported from React to native JS
+- `NicknameScreen` - native nickname selection screen
+- `ShipSelectScreen` - native ship/keeper selection screen
+- `DeathOverlay` - native death screen with respawn/vengeance options
+- `LevelUpOverlay` - native level-up screen with animations
+- `ExitOverlay` - native exit countdown screen
+- `QuestCompleteOverlay` - native quest completion reward screen
+- `ControlHintsOverlay` - native control hints tutorial screen
+- `PanelHintOverlay` - native panel hint tutorial screen
+- `QuestButton` - native quest button component
+- `TournamentButton` - native tournament button component
+- `MutationButton` - native mutation button component
+
+### Changed
+
+- Updated `index.ts` exports to include all new native components
+- All native components follow Component base class pattern with `init()`, `render()`, `destroy()` methods
+- Components support `EventEmitter` for inter-component communication
+
+---
+
+## [0.5.0] — 2026-08-10
 
 ## [0.5.0] вЂ” 2026-08-10
 

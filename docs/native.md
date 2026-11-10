@@ -93,6 +93,19 @@ manager.showScreen('login');
 4. Keep DOM access minimal
 5. Use `nativeX/` prefix for CSS classes
 
-## Planned Components`r`n`r`n- PlayerPanel - Main player UI with skills`r`n- QuestPanel - Quest tracking`r`n- ChatPanel - In-game chat`r`n- SettingsMenu - Game settings`r`n`r`nNote: PlayerPanel is temporarily disabled due to encoding issues during migration.`r`n`r`n## Examples
+## Planned Components`r`n`r`n- PlayerPanel - Main player UI with skills ✅
+- QuestPanel - Quest tracking ✅
+- ChatPanel - In-game chat ✅
+- SettingsMenu - Game settings
+- NicknameScreen - Nickname selection ✅
+- ShipSelectScreen - Ship/keeper selection ✅
+- DeathOverlay - Death screen ✅
+- LevelUpOverlay - Level-up screen ✅
+- ExitOverlay - Exit countdown ✅
+- QuestCompleteOverlay - Quest completion ✅
+- TutorialOverlay - Tutorial overlays ✅
+- QuestButton - Quest button ✅
+- TournamentButton - Tournament button ✅
+- MutationButton - Mutation button ✅
 
 See `src/native/main.ts` for full app example.
