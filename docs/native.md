@@ -110,4 +110,26 @@ manager.showScreen('login');
 - TournamentButton - Tournament button ✅
 - MutationButton - Mutation button ✅
 
-See `src/native/main.ts` for full app example.
+### Native Store
+
+`src/store/nativeStore.ts` provides Zustand-compatible API without React hooks:
+
+- `createNativeStore<T>(initial)` - Create store with initial state
+- `subscribeToStore(store, listener)` - Subscribe to state changes
+- `getStoreState(store)` - Get current state
+- `setStoreState(store, partial)` - Update state (object or function)
+- `useStoreSelector(store, selector)` - Extract selector from state
+
+### Native Hooks
+
+`src/hooks/` provides state machines without React dependencies:
+
+- `createIntroStoryMachine()` - Intro story typewriter
+- `createSplashMachine()` - Splash screen animation
+- `createTutorialMachine()` - Tutorial progression
+
+All machines have:
+- `getState()` - Get current state
+- `subscribe(listener)` - Subscribe to changes
+- `enter()` / `leave()` - Lifecycle methods
+- `destroy()` - Cleanup
