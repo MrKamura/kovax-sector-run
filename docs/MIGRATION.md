@@ -105,12 +105,12 @@ setNativeXConfig({
 - [x] LevelUpOverlay (Level-up screen)
 - [x] ExitOverlay (Exit countdown)
 - [x] QuestCompleteOverlay (Quest completion)
-- [ ] SettingsMenu (Game settings)
-- [ ] TutorialOverlay (Tutorial hints)
-- [ ] QuestButton (Quest button)
-- [ ] TournamentButton (Tournament button)
-- [ ] MutationButton (Mutation button)
-- [ ] ShipChoiceCard (Ship choice card)
+- [x] SettingsMenu (Game settings)
+- [x] TutorialOverlay (Tutorial hints)
+- [x] QuestButton (Quest button)
+- [x] TournamentButton (Tournament button)
+- [x] MutationButton (Mutation button)
+- [x] ShipChoiceCard (Ship choice card)
 
 ## Часто задаваемые вопросы
 

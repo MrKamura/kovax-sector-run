@@ -98,7 +98,7 @@ manager.showScreen('login');
 - PlayerPanel - Main player UI with skills ✅
 - QuestPanel - Quest tracking ✅
 - ChatPanel - In-game chat ✅
-- SettingsMenu - Game settings
+- SettingsMenu - Game settings ✅
 - NicknameScreen - Nickname selection ✅
 - ShipSelectScreen - Ship/keeper selection ✅
 - DeathOverlay - Death screen ✅
@@ -109,6 +109,7 @@ manager.showScreen('login');
 - QuestButton - Quest button ✅
 - TournamentButton - Tournament button ✅
 - MutationButton - Mutation button ✅
+- ShipChoiceCard - Ship choice card ✅
 
 ### Native Store
 

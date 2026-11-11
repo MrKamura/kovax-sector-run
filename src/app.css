@@ -3039,3 +3039,236 @@
 .native-skill-slot-dragging {
   opacity: 0.6;
 }
+
+/* Native UI - Settings Menu */
+.native-menu-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 4;
+  pointer-events: auto;
+  padding: 24px 16px;
+  overflow-x: hidden;
+}
+.native-menu-card {
+  width: min(520px, 92vw);
+  background: #10151c;
+  border: 1px solid #2c3644;
+  border-radius: 18px;
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+  box-shadow: 0 18px 36px rgba(6, 8, 12, 0.55);
+  box-sizing: border-box;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.native-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.native-menu-title-block {
+  display: grid;
+  gap: 4px;
+}
+.native-menu-game-title {
+  font-size: 12px;
+  color: #9aa7bb;
+  margin: 0;
+  font-weight: 500;
+}
+.native-menu-title {
+  font-size: 18px;
+  margin: 0;
+}
+.native-menu-meta {
+  font-size: 12px;
+  color: #9aa7bb;
+  word-break: break-all;
+}
+.native-menu-close {
+  border: 1px solid #2c3644;
+  background: #151a22;
+  color: #cfd6e3;
+  border-radius: 12px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.native-menu-body {
+  display: grid;
+  gap: 10px;
+}
+.native-menu-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(21, 26, 34, 0.7);
+  border: 1px solid rgba(44, 54, 68, 0.7);
+}
+.native-menu-label {
+  font-size: 13px;
+  color: #c3c9d6;
+}
+.native-menu-value {
+  font-size: 13px;
+  color: #d7d2c4;
+  font-weight: 600;
+}
+.native-menu-slider {
+  width: 180px;
+  max-width: 44vw;
+  accent-color: #7ed8ff;
+}
+.native-menu-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.native-menu-section {
+  display: grid;
+  gap: 10px;
+}
+.native-password-form {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(21, 26, 34, 0.55);
+  border: 1px solid rgba(44, 54, 68, 0.7);
+}
+.native-password-label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: #c3c9d6;
+}
+.native-password-input {
+  border-radius: 10px;
+  border: 1px solid #2c3644;
+  background: #0f131a;
+  color: #e7e3d8;
+  padding: 10px 12px;
+}
+.native-password-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.native-password-error {
+  color: #ff9b9b;
+  font-size: 12px;
+}
+.native-password-success {
+  color: #9fd9b2;
+  font-size: 12px;
+}
+.native-primary-button {
+  border: none;
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s;
+  background: #f5c76b;
+  color: #1a1a1a;
+  box-shadow: 0 8px 20px rgba(245, 199, 107, 0.2);
+}
+.native-primary-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.native-primary-button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+.native-secondary-button {
+  border: none;
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s;
+  background: #232a35;
+  color: #e7e3d8;
+  border: 1px solid #2c3644;
+}
+.native-secondary-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.native-secondary-button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+.native-ship-card {
+  background: #151a22;
+  border: 1px solid #2c3644;
+  border-radius: 14px;
+  padding: 14px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.native-ship-card:hover {
+  border-color: #3b4a5f;
+  background: rgba(21, 26, 34, 0.9);
+}
+.native-ship-card.selected {
+  border-color: #7ed8ff;
+  background: rgba(126, 216, 255, 0.1);
+}
+.native-ship-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #d7d2c4;
+}
+.native-ship-level {
+  font-size: 12px;
+  color: #7ed8ff;
+  font-weight: 500;
+}
+.native-ship-stat-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.native-ship-stat-name {
+  font-size: 12px;
+  color: #9aa7bb;
+  min-width: 40px;
+}
+.native-ship-stat-bar {
+  flex: 1;
+  height: 6px;
+  background: #1b212b;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.native-ship-stat-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7ed8ff, #5ab8d4);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.native-ship-stat-value {
+  font-size: 12px;
+  color: #c3c9d6;
+  min-width: 35px;
+  text-align: right;
+}
+.native-ship-button {
+  padding: 10px 16px;
+}
+

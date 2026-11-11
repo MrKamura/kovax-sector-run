@@ -65,3 +65,47 @@ export function useKeeperFormDisplay(
 
   return { formA, formB, maxHp, maxDmg, maxSpd, pct };
 }
+
+/**
+ * Native hook for skill hotkeys (аналог useSkillHotkeys)
+ * Обрабатывает горячие клавиши 1-9 для скиллов
+ */
+export function useSkillHotkeys(
+  enabled: boolean,
+  onSkillTrigger: (index: number) => void,
+  getSkillAt: (index: number) => string | undefined,
+  getSkillLevel: (skillId: string) => number,
+  getEnergyCost: (cost: number, level: number) => number,
+  getPlayerState: () => { skills: string[]; mutations?: { skillLevels?: Record<string, number> }; resources?: { scrap?: number }; skillCooldowns?: Record<string, number> }
+): { cleanup: () => void } {
+  let cleanupFn: () => void = () => {};
+
+  if (enabled) {
+    const handler = (e: KeyboardEvent) => {
+      const key = e.key;
+      if (key >= '1' && key <= '9') {
+        const active = document.activeElement;
+        const tag = active?.tagName?.toLowerCase();
+        if (tag === 'input' || tag === 'textarea') return;
+        const index = key.charCodeAt(0) - '1'.charCodeAt(0);
+        const state = getPlayerState();
+        const baseSkills = (state.skills ?? []).slice(0, 9);
+        const skillId = baseSkills[index];
+        const def = skillId ? { energyCost: 10 } : null; // Placeholder
+        const level = skillId ? (state.mutations?.skillLevels?.[skillId] ?? 0) : 0;
+        const energyCost = def ? getEnergyCost(def.energyCost, level) : 0;
+        const energy = state.resources?.scrap ?? 0;
+        const cooldownEndsAt = Number(
+          (skillId && state.skillCooldowns?.[skillId]) ?? 0
+        );
+        if (def && energy < energyCost) return;
+        if (def && cooldownEndsAt > Date.now()) return;
+        onSkillTrigger(index);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    cleanupFn = () => window.removeEventListener('keydown', handler);
+  }
+
+  return { cleanup: () => cleanupFn() };
+}

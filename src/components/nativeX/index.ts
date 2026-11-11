@@ -22,28 +22,26 @@ export { QuestButton } from './QuestButton';
 export { TournamentButton } from './TournamentButton';
 export { MutationButton } from './MutationButton';
 export { SplashScreen } from './SplashScreen';
-// SettingsMenu - упрощенная версия в React
+export { SettingsMenu } from './SettingsMenu';
 export { ShipChoiceCard } from './ShipChoiceCard';
 export { IntroStoryOverlay } from './IntroStoryOverlay';
 
 // Типы и конфигурация
-export type { 
-  ComponentOptions, 
-  ButtonOptions, 
-  InputOptions, 
-  CardOptions,
-  NativeXConfig,
-  AuthScreenEventData,
-  SplashScreenOptions,
-  SettingsMenuOptions,
-  ShipChoiceCardOptions,
-  IntroStoryOverlayOptions,
-} from './types';
-export { 
-  setNativeXConfig, 
-  getNativeXConfig, 
+export type { NativeXConfig } from './nativeX.config';
+export type { SettingsMenuOptions, SettingsMenuEvent } from './SettingsMenu';
+export type { ShipChoiceCardOptions } from './ShipChoiceCard';
+export type { IntroStoryOverlayOptions } from './IntroStoryOverlay';
+export type { AuthScreenOptions } from './AuthScreen';
+export type { NicknameScreenOptions } from './NicknameScreen';
+export type { PlayerPanelOptions } from './PlayerPanel';
+export type { QuestPanelOptions, QuestData } from './QuestPanel';
+export type { ChatPanelOptions, ChatMessageItem } from './ChatPanel';
+export type { QuestButtonOptions } from './QuestButton';
+export {
+  setNativeXConfig,
+  getNativeXConfig,
   getCssPrefix,
-  defaultConfig 
+  defaultConfig,
 } from './nativeX.config';
 
 // Native store (аналог Zustand без React)

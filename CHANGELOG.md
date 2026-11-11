@@ -29,6 +29,20 @@ When shipping a release: bump `package.json` `version`, add a section here, upda
 - Enhanced `nativeX.config.ts` with migration controls (`enableMigration`, `forceNative`)
 - `isMigrationEnabled()` and `isForceNative()` helper functions
 - Updated nativeX exports in `index.ts` for easy imports
+- **SettingsMenu migration**: Complete native JS implementation of SettingsMenu component with:
+  - Music/SFX volume controls
+  - Keeper form selection display
+  - Password change functionality (password form toggle)
+  - Exit game and logout buttons
+  - Event system integration via `EventEmitter`
+  - Full TypeScript type definitions
+- **ShipChoiceCard migration**: Native JS implementation for ship/keeper selection cards
+- **TutorialOverlay migration**: Control hints and panel hints in native JS
+- **QuestButton migration**: Quest button component in native JS
+- **TournamentButton migration**: Tournament button component in native JS
+- **MutationButton migration**: Mutation button component in native JS
+- Updated `frontend.md` and `native.md` documentation with complete component list
+- Updated `NATIVE_MIGRATION.md` to reflect completed Phase 3 components
 
 ### Changed
 

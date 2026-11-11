@@ -83,6 +83,22 @@ New native JS UI library for gradual migration from React:
 | `index.ts` | All exports |
 | `nativeX.config.ts` | Configuration |
 | `examples.ts` | Usage examples |
+| `SettingsMenu.ts` | Game settings menu |
+| `ShipChoiceCard.ts` | Ship choice card |
+| `PlayerPanel.ts` | Player status panel |
+| `QuestPanel.ts` | Quest tracking panel |
+| `ChatPanel.ts` | In-game chat panel |
+| `NicknameScreen.ts` | Nickname selection screen |
+| `ShipSelectScreen.ts` | Ship/keeper selection screen |
+| `DeathOverlay.ts` | Death screen |
+| `LevelUpOverlay.ts` | Level-up screen |
+| `ExitOverlay.ts` | Exit countdown overlay |
+| `QuestCompleteOverlay.ts` | Quest completion overlay |
+| `TutorialOverlay.ts` | Tutorial hints |
+| `QuestButton.ts` | Quest button |
+| `TournamentButton.ts` | Tournament button |
+| `MutationButton.ts` | Mutation button |
+| `SplashScreen.ts` | Splash screen |
 
 Core modules (`src/native/`):
 
